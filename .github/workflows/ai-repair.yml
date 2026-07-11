@@ -180,7 +180,7 @@ jobs:
           safety-strategy: drop-sudo
           codex-version: 0.143.0
           allow-bot-users: "godot-agent-bot[bot]"
-          codex-args: '["--ephemeral", "--ignore-user-config", "--strict-config"]'
+          codex-args: '["--ephemeral", "--strict-config"]'
 
       - name: Export repair patch
         env:
