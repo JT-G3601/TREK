@@ -23,7 +23,7 @@ This directory contains the control plane for TREK's agent-driven development wo
     scope-guard.mjs              ← scope enforcement (Phase 4, minimum enforcing before Phase 4)
     test-workflow-contracts.mjs  ← deterministic control-plane contract tests
   providers/
-    implementation-provider.md   ← Codex provider adapter contract
+    implementation-provider.md   ← active implementation provider adapter contract
 ```
 
 ## Policy

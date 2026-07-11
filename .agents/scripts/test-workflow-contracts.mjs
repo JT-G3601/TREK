@@ -111,34 +111,65 @@ try {
     }
   }
 
-  for (const workflow of ["ai-implement.yml", "ai-repair.yml"]) {
+  for (const [workflow, stepName] of [
+    ["ai-implement.yml", "Run implementation with DeepSeek Claude Code"],
+    ["ai-repair.yml", "Run repair with DeepSeek Claude Code"],
+  ]) {
     const source = readFileSync(
       resolve(root, ".github/workflows", workflow),
       "utf8"
     );
-    const codexStep = workflowStep(source, "Run Codex through the protected API proxy");
+    const generateJob = workflowJob(source, "generate");
+    const providerStep = workflowStep(generateJob, stepName);
+    const requiredProviderConfiguration = [
+      "anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342",
+      "ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic",
+      "secrets.DEEPSEEK_API_KEY",
+      "github_token: ${{ github.token }}",
+      'allowed_bots: "godot-agent-bot[bot]"',
+      "track_progress: false",
+      "--model deepseek-v4-pro",
+      '--allowedTools "Read,Glob,Grep,Edit,Write"',
+      '--disallowedTools "Bash,NotebookEdit,WebFetch,WebSearch,TaskOutput,KillTask"',
+      "--json-schema",
+    ];
+    const missing = requiredProviderConfiguration.filter(
+      (value) => !providerStep.includes(value)
+    );
     if (
-      !codexStep.includes('allow-bot-users: "godot-agent-bot[bot]"') ||
-      codexStep.includes("allow-bots: true")
+      missing.length > 0 ||
+      !generateJob.includes("\n      issues: read") ||
+      source.includes("secrets.OPENAI_API_KEY") ||
+      source.includes("openai/codex-action")
     ) {
       failures.push(
-        `${workflow}: Codex Action must allow only godot-agent-bot[bot]`
+        `${workflow}: invalid DeepSeek implementation provider; missing ${missing.join(", ") || "none"}`
       );
     } else {
-      console.log(`PASS exact Codex bot allowlist: ${workflow}`);
+      console.log(
+        `PASS constrained DeepSeek implementation provider: ${workflow}`
+      );
     }
+  }
 
+  const providerPolicy = JSON.parse(
+    readFileSync(resolve(root, ".agents/policy.json"), "utf8")
+  );
+  for (const phase of ["implementation", "repair"]) {
+    const provider = providerPolicy.model_providers?.[phase];
     if (
-      !codexStep.includes(
-        'codex-args: \'["--ephemeral", "--strict-config"]\''
-      ) ||
-      codexStep.includes("--ignore-user-config")
+      providerPolicy.execution?.implementation_provider !==
+        "claude-code-deepseek" ||
+      provider?.runtime !== "claude-code-action" ||
+      provider?.platform !== "deepseek" ||
+      provider?.api_protocol !== "anthropic-compatible" ||
+      provider?.endpoint !== "https://api.deepseek.com/anthropic" ||
+      provider?.model !== "deepseek-v4-pro" ||
+      provider?.secret_name !== "DEEPSEEK_API_KEY"
     ) {
-      failures.push(
-        `${workflow}: Codex Action must load its protected proxy config`
-      );
+      failures.push(`policy.json: invalid ${phase} provider declaration`);
     } else {
-      console.log(`PASS Codex protected proxy config: ${workflow}`);
+      console.log(`PASS DeepSeek ${phase} provider policy`);
     }
   }
 

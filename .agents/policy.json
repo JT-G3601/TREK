@@ -15,7 +15,7 @@
     "expected_app_slug": "godot-agent-bot"
   },
   "execution": {
-    "implementation_provider": "codex",
+    "implementation_provider": "claude-code-deepseek",
     "ci_trigger_mode": "github-app"
   },
   "model_providers": {
@@ -28,6 +28,22 @@
       "secret_name": "DEEPSEEK_API_KEY"
     },
     "review": {
+      "runtime": "claude-code-action",
+      "platform": "deepseek",
+      "api_protocol": "anthropic-compatible",
+      "endpoint": "https://api.deepseek.com/anthropic",
+      "model": "deepseek-v4-pro",
+      "secret_name": "DEEPSEEK_API_KEY"
+    },
+    "implementation": {
+      "runtime": "claude-code-action",
+      "platform": "deepseek",
+      "api_protocol": "anthropic-compatible",
+      "endpoint": "https://api.deepseek.com/anthropic",
+      "model": "deepseek-v4-pro",
+      "secret_name": "DEEPSEEK_API_KEY"
+    },
+    "repair": {
       "runtime": "claude-code-action",
       "platform": "deepseek",
       "api_protocol": "anthropic-compatible",

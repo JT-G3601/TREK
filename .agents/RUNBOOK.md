@@ -13,7 +13,7 @@ Issue opened (agent_task form)
   → ai:awaiting-admission → maintainer adds ai:admitted
   → ai:planning → Claude Code produces plan
   → ai:plan-ready → maintainer adds ai:approved
-  → ai:implementing → Codex generates, scope guard checks, PR created
+  → ai:implementing → implementation provider generates, scope guard checks, PR created
   → Draft PR → CI runs → ai:reviewing → Claude Code reviews
   → ai:ready-for-human → maintainer merges
   → ai:done
@@ -28,7 +28,7 @@ Issue opened (agent_task form)
 **Recovery**:
 1. Check Actions tab → `AI Implement` workflow run for errors
 2. If `preflight` failed: fix the issue (missing admission, duplicate branch), remove `ai:implementing`, re-add `ai:approved`
-3. If `generate` failed: check Codex provider credential or API availability
+3. If `generate` failed: check the configured implementation provider credential or API availability
 4. If `policy-check` failed: scope guard rejected the patch — review the generated changes manually
 5. If `publish` failed: check GitHub App token permissions
 
@@ -91,8 +91,8 @@ Agent workflows must not modify these without explicit human approval:
 | Symptom | Check |
 |---------|-------|
 | PR created but CI not running | Verify GitHub App is installed with correct permissions |
-| Codex generation fails | Verify `CODEX_API_KEY` secret is set and valid |
-| Claude Code planning/review fails | Verify `CLAUDE_API_KEY` secret is set and valid |
+| DeepSeek generation fails | Verify `DEEPSEEK_API_KEY` is set, funded, and valid |
+| Claude Code planning/review fails | Verify `DEEPSEEK_API_KEY` and the Anthropic-compatible endpoint |
 | Publisher can't push branch | Verify `AGENT_APP_ID` and `AGENT_APP_PRIVATE_KEY` secrets |
 
 ### Pre-activation verification
@@ -110,7 +110,7 @@ Then perform one low-risk dry run and confirm all of the following from GitHub:
 
 1. The plan branch contains the handoff commit reported on the Issue.
 2. `AI Plan Approval / #<issue>` is owned by the App slug in policy and contains the same SHA and digest.
-3. The Codex generation job has no repository write permission.
+3. The implementation generation job has no repository write permission.
 4. Failed verification or scope checks create no implementation branch.
 5. The Draft PR is authored by the expected App and targets `dev`.
 6. Independent review starts only after all applicable CI succeeds for the same head SHA.
