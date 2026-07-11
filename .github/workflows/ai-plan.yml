@@ -25,7 +25,6 @@ jobs:
     permissions:
       contents: read
       issues: read
-      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -66,6 +65,7 @@ jobs:
           ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
         with:
           anthropic_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
+          github_token: ${{ github.token }}
           track_progress: false
           prompt: |
             Act only as the read-only planning provider described in CLAUDE.md and
