@@ -93,8 +93,7 @@ jobs:
         run: |
           node .agents/scripts/validate-handoff.mjs /tmp/approved-handoff.md
           digest=$(node .agents/scripts/compute-plan-digest.mjs /tmp/approved-handoff.md)
-          recorded=$(sed -n 's/^- Plan digest: //p' /tmp/approved-handoff.md)
-          test -n "$recorded"
+          recorded=$(node .agents/scripts/read-handoff-metadata.mjs /tmp/approved-handoff.md "Plan digest")
           test "$recorded" = "$digest"
           echo "value=$digest" >> "$GITHUB_OUTPUT"
 

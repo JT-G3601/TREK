@@ -181,10 +181,9 @@ jobs:
         run: |
           handoff=".agents/handoff/issue-${{ github.event.issue.number }}.md"
           node .agents/scripts/validate-handoff.mjs "$handoff"
-          recorded=$(sed -n 's/^- Plan digest: //p' "$handoff")
+          recorded=$(node .agents/scripts/read-handoff-metadata.mjs "$handoff" "Plan digest")
           computed=$(node .agents/scripts/compute-plan-digest.mjs "$handoff")
-          planning_base=$(sed -n 's/^- Planning base SHA: //p' "$handoff")
-          test -n "$recorded"
+          planning_base=$(node .agents/scripts/read-handoff-metadata.mjs "$handoff" "Planning base SHA")
           test "$recorded" = "$computed"
           test "$planning_base" = "$(git rev-parse HEAD)"
 

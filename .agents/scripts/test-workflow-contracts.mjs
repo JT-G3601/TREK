@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { validate as validateIssue } from "./validate-issue.mjs";
+import { readHandoffMetadata } from "./read-handoff-metadata.mjs";
 
 const root = process.cwd();
 const fixtures = resolve(root, ".agents/scripts/__fixtures__");
@@ -128,6 +129,59 @@ try {
     );
   } else {
     console.log("PASS plan artifact download path: ai-plan.yml publish job");
+  }
+
+  const planRevalidationStep = workflowStep(planWorkflow, "Revalidate candidate");
+  const approvalWorkflow = readFileSync(
+    resolve(root, ".github/workflows/ai-plan-approval.yml"),
+    "utf8"
+  );
+  const approvalDigestStep = workflowStep(
+    approvalWorkflow,
+    "Validate plan and recompute digest"
+  );
+  const metadataReader = "node .agents/scripts/read-handoff-metadata.mjs";
+  if (
+    !planRevalidationStep.includes(
+      `${metadataReader} "$handoff" "Planning base SHA"`
+    ) ||
+    !planRevalidationStep.includes(`${metadataReader} "$handoff" "Plan digest"`) ||
+    !approvalDigestStep.includes(
+      `${metadataReader} /tmp/approved-handoff.md "Plan digest"`
+    ) ||
+    planRevalidationStep.includes("sed -n") ||
+    approvalDigestStep.includes("sed -n")
+  ) {
+    failures.push(
+      "plan workflows must read authoritative values from the Metadata section"
+    );
+  } else {
+    console.log("PASS scoped handoff metadata readers: plan publish and approval");
+  }
+
+  const duplicateMetadataPath = join(temp, "duplicate-metadata.md");
+  const authoritativeDigest = "a".repeat(64);
+  const authoritativeBase = "3db2495bcdcb1da300ca6430e0e3419a7650fb89";
+  const handoffWithDuplicateMetadata = readFileSync(
+    resolve(root, ".agents/handoff/issue-walkthrough-2.md"),
+    "utf8"
+  )
+    .replace("- Plan digest:\n", `- Plan digest: ${authoritativeDigest}\n`)
+    .concat(
+      "\n## Duplicate Metadata-like Facts\n\n",
+      "- Planning base SHA: deadbeef\n",
+      "- Plan digest: wrong\n"
+  );
+  writeFileSync(duplicateMetadataPath, handoffWithDuplicateMetadata);
+  if (
+    readHandoffMetadata(duplicateMetadataPath, "Planning base SHA") !==
+      authoritativeBase ||
+    readHandoffMetadata(duplicateMetadataPath, "Plan digest") !==
+      authoritativeDigest
+  ) {
+    failures.push("metadata reader accepted a duplicate value outside Metadata");
+  } else {
+    console.log("PASS metadata reader ignores duplicates outside Metadata");
   }
 
   const triageWorkflow = readFileSync(
