@@ -216,6 +216,33 @@ try {
     }
   }
 
+  for (const [workflow, stepName] of [
+    ["ai-implement.yml", "Apply and inspect candidate patch"],
+    ["ai-repair.yml", "Inspect repair"],
+  ]) {
+    const source = readFileSync(
+      resolve(root, ".github/workflows", workflow),
+      "utf8"
+    );
+    const policyJob = workflowJob(source, "policy-check");
+    const inspectStep = workflowStep(policyJob, stepName);
+    const intentToAdd = inspectStep.indexOf("git add -N --all");
+    const changedFilesRead = inspectStep.indexOf(
+      "git diff --no-renames --name-only"
+    );
+    if (
+      intentToAdd === -1 ||
+      changedFilesRead === -1 ||
+      intentToAdd > changedFilesRead
+    ) {
+      failures.push(
+        `${workflow}: Scope Guard must expose new files before reading changed paths`
+      );
+    } else {
+      console.log(`PASS Scope Guard new-file detection: ${workflow}`);
+    }
+  }
+
   const planWorkflow = readFileSync(
     resolve(root, ".github/workflows/ai-plan.yml"),
     "utf8"

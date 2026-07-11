@@ -380,6 +380,7 @@ jobs:
           test -s /tmp/generation/patch.diff
           git apply --check /tmp/generation/patch.diff
           git apply /tmp/generation/patch.diff
+          git add -N --all
           git diff --check
           git diff --no-renames --name-only --diff-filter=ACMRD -z | \
             node --input-type=module -e '
