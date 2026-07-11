@@ -110,6 +110,26 @@ try {
     }
   }
 
+  const planWorkflow = readFileSync(
+    resolve(root, ".github/workflows/ai-plan.yml"),
+    "utf8"
+  );
+  const publishJob = workflowJob(planWorkflow, "publish");
+  const downloadCandidateStep = workflowStep(
+    publishJob,
+    "Download validated candidate"
+  );
+  if (
+    !downloadCandidateStep.includes("uses: actions/download-artifact@v5") ||
+    !downloadCandidateStep.includes("path: .agents/handoff")
+  ) {
+    failures.push(
+      "ai-plan.yml: publish job must download the candidate into .agents/handoff"
+    );
+  } else {
+    console.log("PASS plan artifact download path: ai-plan.yml publish job");
+  }
+
   const triageWorkflow = readFileSync(
     resolve(root, ".github/workflows/ai-issue-triage.yml"),
     "utf8"
