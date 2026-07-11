@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { validate as validateIssue } from "./validate-issue.mjs";
 
 const root = process.cwd();
 const fixtures = resolve(root, ".agents/scripts/__fixtures__");
@@ -74,6 +75,10 @@ try {
     "Issue is no longer in triage. Ignoring stale delivery.",
     "Issue is no longer in a validation phase. Ignoring stale delivery.",
     "Issue is no longer awaiting information. Ignoring stale delivery.",
+    "const risk = validation.risk;",
+    "const declaredRisk = validation.risk;",
+    "if (declaredRisk === 'risk:high')",
+    "Risk label already synchronized to ${risk}.",
   ];
   const missingTriageRequirements = triageRequirements.filter(
     (value) => !triageWorkflow.includes(value)
@@ -103,6 +108,15 @@ try {
     [join(fixtures, "valid-low-risk.json")],
     0
   );
+  const highRiskIssue = JSON.parse(
+    readFileSync(join(fixtures, "valid-high-risk.json"), "utf8")
+  );
+  const highRiskOutput = validateIssue(highRiskIssue);
+  if (highRiskOutput.valid !== true || highRiskOutput.risk !== "risk:high") {
+    failures.push("valid high-risk classification: expected valid risk:high output");
+  } else {
+    console.log("PASS valid high-risk classification");
+  }
   for (const file of [
     "missing-goal.json",
     "blank-goal.json",

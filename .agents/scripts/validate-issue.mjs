@@ -23,6 +23,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -104,9 +105,9 @@ function extractCheckbox(body, fieldLabel) {
  * @param {string} issue.title
  * @param {string} issue.body
  * @param {Array<{name: string}>} issue.labels
- * @returns {{ valid: boolean, errors: string[], warnings: string[] }}
+ * @returns {{ valid: boolean, errors: string[], warnings: string[], risk?: string }}
  */
-function validate(issue) {
+export function validate(issue) {
   const errors = [];
   const warnings = [];
 
@@ -205,6 +206,7 @@ function validate(issue) {
     valid: errors.length === 0,
     errors,
     warnings,
+    risk: VALID_RISK_LABELS.has(riskValue) ? riskValue : undefined,
   };
 }
 
@@ -265,4 +267,6 @@ function main() {
   process.exit(anyInvalid ? 1 : 0);
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
