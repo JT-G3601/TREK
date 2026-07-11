@@ -56,9 +56,9 @@ scope, protected paths, or configured size-limit violations.
 
 | Role | Tool | Permissions |
 |------|------|-------------|
-| Planning | Claude Code | Read-only |
+| Planning | Claude Code (DeepSeek backend) | Read-only |
 | Implementation | Codex | Read-only (write via publisher) |
-| Review | Claude Code | Read-only |
+| Review | Claude Code (DeepSeek backend) | Read-only |
 | Publishing | Deterministic controller | Short-lived write token |
 | Approval | Human maintainer | Repository write |
 | Merge & Release | Human maintainer | Repository admin |

@@ -57,7 +57,7 @@ until GitHub executes the workflows with real App and provider credentials.
 ## Required Before Activation
 
 1. Create/install the GitHub App and set `approval.expected_app_slug` to its exact slug.
-2. Configure `AGENT_APP_ID`, `AGENT_APP_PRIVATE_KEY`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`.
+2. Configure `AGENT_APP_ID`, `AGENT_APP_PRIVATE_KEY`, `OPENAI_API_KEY`, and `DEEPSEEK_API_KEY`.
 3. Commit these control-plane files to `dev` and change this repository's default branch from `main` to `dev`; Issue and `workflow_run` workflows must exist on the default branch.
 4. Verify `dev` ruleset/required checks and confirm the App cannot push to or bypass protection on `main`.
 5. Follow `docs/plans/agent-workflow-test-guide.md` for the staged smoke test.

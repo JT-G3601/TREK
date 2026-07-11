@@ -52,7 +52,12 @@ Add these secrets to `JT-G3601/TREK` (**Settings → Secrets and variables → A
 | `AGENT_APP_ID` | The App ID (numeric, from App settings page) |
 | `AGENT_APP_PRIVATE_KEY` | Full contents of the `.pem` file |
 | `OPENAI_API_KEY` | API key consumed only by `openai/codex-action` through its protected proxy |
-| `ANTHROPIC_API_KEY` | API key consumed only by the read-only Claude planning/review jobs |
+| `DEEPSEEK_API_KEY` | DeepSeek API key consumed only by the read-only Claude Code planning/review jobs |
+
+Planning and review use Claude Code as the agent runtime with DeepSeek V4 Pro as
+the model backend through `https://api.deepseek.com/anthropic`. The workflows
+pass the Secret through the action's `anthropic_api_key` compatibility input;
+the Secret itself remains named `DEEPSEEK_API_KEY` to identify its real issuer.
 
 ## Step 6: Record Configuration
 
