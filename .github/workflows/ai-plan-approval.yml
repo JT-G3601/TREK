@@ -1,0 +1,170 @@
+name: AI Plan Approval
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-plan-approval-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    name: Bind Plan Approval
+    runs-on: ubuntu-latest
+    if: |
+      github.event.label.name == 'ai:approved' &&
+      contains(github.event.issue.labels.*.name, 'ai:plan-ready') &&
+      !contains(github.event.issue.labels.*.name, 'ai:implementing')
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+
+      - name: Authorize actor and fetch exact plan revision
+        id: context
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+            const actor = context.payload.sender.login;
+            const actorType = context.payload.sender.type;
+            const issueNum = context.payload.issue.number;
+            const { data: permissionData } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner, repo: context.repo.repo, username: actor,
+            }).catch(() => ({ data: { permission: 'none' } }));
+            const permission = permissionData.permission;
+            if (actorType !== 'User' || !['write', 'maintain', 'admin'].includes(permission)) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issueNum, name: 'ai:approved',
+              }).catch(error => { if (error.status !== 404) throw error; });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issueNum,
+                body: `@${actor} is not an authorized human maintainer; the approval label was removed.`,
+              });
+              core.setFailed('Approval requires a GitHub User with write, maintain, or admin permission.');
+              return;
+            }
+
+            const { data: refs } = await github.rest.git.listMatchingRefs({
+              owner: context.repo.owner, repo: context.repo.repo,
+              ref: `heads/ai-plan/${issueNum}-`,
+            });
+            if (refs.length !== 1) {
+              throw new Error(`Expected exactly one plan branch for issue #${issueNum}; found ${refs.length}.`);
+            }
+
+            const planSha = refs[0].object.sha;
+            const path = `.agents/handoff/issue-${issueNum}.md`;
+            const { data: file } = await github.rest.repos.getContent({
+              owner: context.repo.owner, repo: context.repo.repo,
+              path, ref: planSha,
+            });
+            if (Array.isArray(file) || file.type !== 'file') {
+              throw new Error(`Plan handoff is not a file at ${planSha}.`);
+            }
+            fs.writeFileSync('/tmp/approved-handoff.md', Buffer.from(file.content, 'base64'));
+            core.setOutput('actor', actor);
+            core.setOutput('permission', permission);
+            core.setOutput('plan_sha', planSha);
+            core.setOutput('plan_branch', refs[0].ref.replace('refs/heads/', ''));
+
+      - name: Validate plan and recompute digest
+        id: digest
+        run: |
+          node .agents/scripts/validate-handoff.mjs /tmp/approved-handoff.md
+          digest=$(node .agents/scripts/compute-plan-digest.mjs /tmp/approved-handoff.md)
+          recorded=$(sed -n 's/^- Plan digest: //p' /tmp/approved-handoff.md)
+          test -n "$recorded"
+          test "$recorded" = "$digest"
+          echo "value=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Create App-owned approval record and transition state
+        uses: actions/github-script@v7
+        env:
+          APPROVER: ${{ steps.context.outputs.actor }}
+          APPROVER_PERMISSION: ${{ steps.context.outputs.permission }}
+          PLAN_SHA: ${{ steps.context.outputs.plan_sha }}
+          PLAN_DIGEST: ${{ steps.digest.outputs.value }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+            const issueNum = context.payload.issue.number;
+            const policy = JSON.parse(fs.readFileSync('.agents/policy.json', 'utf8'));
+            const timestamp = new Date().toISOString();
+            const approval = {
+              plan_sha: process.env.PLAN_SHA,
+              plan_digest: process.env.PLAN_DIGEST,
+              approver: process.env.APPROVER,
+              permission: process.env.APPROVER_PERMISSION,
+              timestamp,
+              repository: `${context.repo.owner}/${context.repo.repo}`,
+              app_slug: policy.approval.expected_app_slug,
+            };
+            const marker = Buffer.from(JSON.stringify(approval)).toString('base64');
+            const { data: check } = await github.rest.checks.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              name: `AI Plan Approval / #${issueNum}`,
+              head_sha: process.env.PLAN_SHA,
+              status: 'completed', conclusion: 'success', completed_at: timestamp,
+              output: {
+                title: `Plan approved for issue #${issueNum}`,
+                summary: [
+                  `- **Plan SHA**: \`${process.env.PLAN_SHA}\``,
+                  `- **Plan digest**: \`${process.env.PLAN_DIGEST}\``,
+                  `- **Approver**: @${process.env.APPROVER}`,
+                  `- **Permission**: ${process.env.APPROVER_PERMISSION}`,
+                  `- **Approved at**: ${timestamp}`,
+                  '', `<!-- agent-approval:${marker} -->`,
+                ].join('\n'),
+              },
+            });
+            if (check.app?.slug !== policy.approval.expected_app_slug) {
+              throw new Error(
+                `Approval check owner ${check.app?.slug || 'unknown'} does not match ` +
+                `expected App ${policy.approval.expected_app_slug}.`
+              );
+            }
+
+            for (const name of ['ai:plan-ready', 'ai:approved']) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issueNum, name,
+              }).catch(error => { if (error.status !== 404) throw error; });
+            }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: issueNum, labels: ['ai:implementing'],
+            });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: issueNum,
+              body: [
+                '## Agent Workflow — Plan Approved', '',
+                `Approved by @${process.env.APPROVER} at ${timestamp}.`,
+                `- **Plan SHA**: \`${process.env.PLAN_SHA}\``,
+                `- **Plan digest**: \`${process.env.PLAN_DIGEST}\``,
+                `- **Approval App**: \`${check.app.slug}\``, '',
+                'Implementation may now begin for this exact plan revision.',
+              ].join('\n'),
+            });

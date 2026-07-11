@@ -1,0 +1,8 @@
+{
+  "number": 102,
+  "title": "[agent] Scope not acknowledged",
+  "body": "### Pre-flight checklist\n\n- [x] This task has been discussed and approved by a maintainer (Discord or otherwise)\n- [x] I understand this task will be implemented by an AI agent (Codex) and reviewed by an AI agent (Claude Code)\n- [x] I understand a human maintainer must approve the plan before implementation begins\n\n### Goal\n\nFix a bug in the login flow.\n\n### Acceptance Criteria\n\n- [ ] Login works correctly\n\n### Risk Level\n\nrisk:medium — logic change with test coverage\n\n### Scope Acknowledgment\n\n- [ ] This task does NOT involve authentication, authorization, secrets, database migrations, production config, release versioning, or branch protection changes\n",
+  "labels": [
+    { "name": "ai:triage" }
+  ]
+}

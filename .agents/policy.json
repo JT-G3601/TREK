@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "repository": {
+    "expected_full_name": "JT-G3601/TREK",
+    "base_branch": "dev",
+    "release_branch": "main"
+  },
+  "contribution": {
+    "require_maintainer_admission": true,
+    "require_discussion_reference": true,
+    "admission_signal": "ai:admitted"
+  },
+  "approval": {
+    "minimum_permission": "write",
+    "expected_app_slug": "godot-agent-bot"
+  },
+  "execution": {
+    "implementation_provider": "codex",
+    "ci_trigger_mode": "github-app"
+  },
+  "branch_lifecycle": {
+    "plan_branches": "retain"
+  },
+  "limits": {
+    "max_changed_files": 20,
+    "max_changed_lines": 1200,
+    "max_repair_rounds": 2
+  },
+  "protected_paths": [
+    ".github/workflows/**",
+    ".agents/**",
+    ".claude/**",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CODEOWNERS",
+    "server/**/migrations/**",
+    "**/*secret*",
+    "docker-compose.yml"
+  ],
+  "generated_path_exceptions": {
+    "handoff": ".agents/handoff/issue-{issue_number}.md"
+  },
+  "require_human_review": [
+    "authentication",
+    "authorization",
+    "database-migration",
+    "dependency-major-update",
+    "release",
+    "workflow-permissions"
+  ],
+  "release": {
+    "agent_may_merge": false,
+    "agent_may_trigger": false
+  }
+}

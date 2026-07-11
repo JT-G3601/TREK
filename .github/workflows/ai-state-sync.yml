@@ -1,0 +1,174 @@
+name: AI State Sync
+
+on:
+  schedule:
+    - cron: '13 */6 * * *'  # Every 6 hours, off-peak minute
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    name: Reconcile Agent Task States
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const now = new Date();
+
+            // 1. Find all issues with agent workflow labels
+            const agentLabels = [
+              'ai:triage', 'ai:awaiting-admission', 'ai:planning',
+              'ai:plan-ready', 'ai:implementing', 'ai:reviewing',
+              'ai:changes-requested', 'ai:ready-for-human',
+              'ai:ci-awaiting-approval', 'ai:blocked', 'ai:needs-info',
+              'ai:done', 'ai:forbidden'
+            ];
+
+            const issuesByLabel = {};
+            for (const label of agentLabels) {
+              try {
+                const { data: issues } = await github.rest.issues.listForRepo({
+                  owner, repo,
+                  labels: label,
+                  state: 'all',
+                  per_page: 100,
+                });
+                for (const issue of issues) {
+                  if (!issuesByLabel[issue.number]) {
+                    issuesByLabel[issue.number] = { issue, labels: [] };
+                  }
+                  issuesByLabel[issue.number].labels.push(label);
+                }
+              } catch {}
+            }
+
+            const report = [];
+            for (const [num, entry] of Object.entries(issuesByLabel)) {
+              const { issue, labels } = entry;
+
+              const activePhases = labels.filter(label => label.startsWith('ai:'));
+              if (activePhases.length > 1) {
+                report.push(`#${num}: multiple phase labels: ${activePhases.join(', ')}`);
+              }
+
+              // Detect stuck implementing (>1 day with no PR)
+              if (labels.includes('ai:implementing')) {
+                const { data: refs } = await github.rest.git.listMatchingRefs({
+                  owner, repo, ref: `heads/ai/${num}`,
+                });
+                const updated = new Date(issue.updated_at);
+                const hoursSinceUpdate = (now - updated) / (1000 * 60 * 60);
+                if (refs.length === 0 && hoursSinceUpdate > 2) {
+                  report.push(`#${num}: implementing for ${Math.round(hoursSinceUpdate)}h with no branch`);
+                }
+              }
+
+              // Detect closed issues with active branches (merged but not cleaned up)
+              if (issue.state === 'closed') {
+                const { data: refs } = await github.rest.git.listMatchingRefs({
+                  owner, repo, ref: `heads/ai/${num}`,
+                });
+                if (refs.length > 0) {
+                  report.push(`#${num}: closed but branch ai/${num} still exists`);
+                }
+              }
+            }
+
+            // 2. Post summary comment on the sync issue or log
+            if (report.length === 0) {
+              console.log('State sync: all agent tasks consistent.');
+            } else {
+              console.log(`State sync: ${report.length} anomalies found:`);
+              for (const r of report) console.log(`  - ${r}`);
+            }
+
+            // 3. Detect PRs whose base is stale
+            try {
+              const prs = await github.paginate(github.rest.pulls.list, {
+                owner, repo, state: 'open', per_page: 100,
+              });
+              for (const pr of prs) {
+                if (pr.head.ref.startsWith('ai/') && pr.draft) {
+                  // Check if dev has advanced beyond PR base
+                  const { data: comparison } = await github.rest.repos.compareCommits({
+                    owner, repo,
+                    base: pr.head.sha,
+                    head: 'dev',
+                  });
+                  if (comparison.ahead_by > 0) {
+                    const daysSinceUpdate = (now - new Date(pr.updated_at)) / (1000 * 60 * 60 * 24);
+                    console.log(`PR #${pr.number}: branch behind dev by ${comparison.ahead_by} commits, last updated ${Math.round(daysSinceUpdate)}d ago`);
+
+                    if (daysSinceUpdate > 7) {
+                      const comments = await github.paginate(github.rest.issues.listComments, {
+                        owner, repo, issue_number: pr.number, per_page: 100,
+                      });
+                      if (!comments.some(comment =>
+                        comment.body?.includes('<!-- agent-stale-branch-warning -->')
+                      )) {
+                        await github.rest.issues.createComment({
+                          owner, repo,
+                          issue_number: pr.number,
+                          body: [
+                            '## Stale Branch Warning',
+                            '',
+                            `This PR branch is behind \`dev\` by ${comparison.ahead_by} commit(s).`,
+                            `Last updated ${Math.round(daysSinceUpdate)} days ago.`,
+                            '',
+                            'The branch must be updated and reverified before this PR can be merged.',
+                            '', '<!-- agent-stale-branch-warning -->',
+                          ].join('\n'),
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.log('PR stale check skipped:', e.message);
+            }
+
+            // 4. Reconcile human-merged agent PRs to ai:done.
+            try {
+              const closedPrs = await github.paginate(github.rest.pulls.list, {
+                owner, repo, state: 'closed', base: 'dev', per_page: 100,
+              });
+              for (const pr of closedPrs) {
+                if (!pr.merged_at || !pr.head.ref.startsWith('ai/')) continue;
+                const issueMatch = pr.body?.match(/(?:Closes|Fixes|Resolves)\s+#(\d+)/i);
+                if (!issueMatch) continue;
+                const issueNumber = Number(issueMatch[1]);
+                const { data: issue } = await github.rest.issues.get({
+                  owner, repo, issue_number: issueNumber,
+                });
+                const current = issue.labels.map(label =>
+                  typeof label === 'string' ? label : label.name
+                );
+                if (current.includes('ai:done')) continue;
+                for (const phase of agentLabels.filter(label => label !== 'ai:done')) {
+                  if (!current.includes(phase)) continue;
+                  await github.rest.issues.removeLabel({
+                    owner, repo, issue_number: issueNumber, name: phase,
+                  }).catch(error => { if (error.status !== 404) throw error; });
+                }
+                await github.rest.issues.addLabels({
+                  owner, repo, issue_number: issueNumber, labels: ['ai:done'],
+                });
+              }
+            } catch (e) {
+              console.log('Merged PR reconciliation skipped:', e.message);
+            }
+
+            console.log('State sync complete.');

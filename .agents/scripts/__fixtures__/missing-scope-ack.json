@@ -1,0 +1,8 @@
+{
+  "number": 103,
+  "title": "[agent] Missing scope acknowledgment",
+  "body": "### Pre-flight checklist\n\n- [x] This task has been discussed and approved by a maintainer (Discord or otherwise)\n- [x] I understand this task will be implemented by an AI agent (Codex) and reviewed by an AI agent (Claude Code)\n- [x] I understand a human maintainer must approve the plan before implementation begins\n\n### Goal\n\nUpdate a documentation link.\n\n### Acceptance Criteria\n\n- [ ] The link points to the current document\n\n### Risk Level\n\nrisk:low — documentation, config, or cosmetic only\n",
+  "labels": [
+    { "name": "ai:triage" }
+  ]
+}
