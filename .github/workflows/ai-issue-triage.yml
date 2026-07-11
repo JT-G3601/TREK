@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ai-issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   triage:
     name: Triage Agent Task
@@ -38,23 +42,22 @@ jobs:
 
       - name: Export issue JSON for validator
         id: export
-        shell: bash
-        run: |
-          node --input-type=module -e '
-            import { writeFileSync } from "node:fs";
-            const issue = {
-              number: Number(process.env.ISSUE_NUMBER),
-              title: process.env.ISSUE_TITLE,
-              body: process.env.ISSUE_BODY,
-              labels: JSON.parse(process.env.ISSUE_LABELS_JSON),
-            };
-            writeFileSync("issue.json", JSON.stringify(issue));
-          '
-        env:
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
-          ISSUE_LABELS_JSON: ${{ toJSON(github.event.issue.labels) }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+            });
+            fs.writeFileSync('issue.json', JSON.stringify({
+              number: issue.number,
+              title: issue.title,
+              body: issue.body,
+              labels: issue.labels,
+            }));
 
       - name: Run deterministic validator
         id: validate
@@ -87,8 +90,22 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const issue = context.payload.issue;
-            const riskLabel = issue.labels.find(l => l.name.startsWith('risk:'));
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+            });
+            const labels = issue.labels.map(label => label.name);
+            if (labels.includes('ai:awaiting-admission') && !labels.includes('ai:triage')) {
+              console.log('Issue is already awaiting admission. No duplicate transition needed.');
+              return;
+            }
+            if (!labels.includes('ai:triage')) {
+              console.log('Issue is no longer in triage. Ignoring stale delivery.');
+              return;
+            }
+
+            const riskLabel = issue.labels.find(label => label.name.startsWith('risk:'));
             const risk = riskLabel ? riskLabel.name : 'risk:low';
 
             // Ensure risk label exists
@@ -102,18 +119,22 @@ jobs:
             }
 
             // Transition: ai:triage → ai:awaiting-admission
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.number,
-              name: 'ai:triage',
-            });
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.number,
-              labels: ['ai:awaiting-admission'],
-            });
+            if (labels.includes('ai:triage')) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'ai:triage',
+              }).catch(error => { if (error.status !== 404) throw error; });
+            }
+            if (!labels.includes('ai:awaiting-admission')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['ai:awaiting-admission'],
+              });
+            }
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -142,7 +163,11 @@ jobs:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const fs = require('node:fs');
-            const issue = context.payload.issue;
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+            });
             const validation = JSON.parse(fs.readFileSync('result.json', 'utf8'))[0];
             const errors = Array.isArray(validation.errors) ? validation.errors : [];
             const warnings = Array.isArray(validation.warnings) ? validation.warnings : [];
@@ -169,7 +194,20 @@ jobs:
             );
 
             // Add needs-info and remove earlier active phases
-            const labels = issue.labels.map(l => l.name);
+            const labels = issue.labels.map(label => label.name);
+            if (!labels.some(name => [
+              'ai:triage', 'ai:awaiting-admission', 'ai:needs-info',
+            ].includes(name))) {
+              console.log('Issue is no longer in a validation phase. Ignoring stale delivery.');
+              return;
+            }
+            const transitioned = labels.includes('ai:triage') ||
+              labels.includes('ai:awaiting-admission') ||
+              !labels.includes('ai:needs-info');
+            if (!transitioned && context.payload.action !== 'edited') {
+              console.log('Issue is already awaiting information. No duplicate transition needed.');
+              return;
+            }
             for (const name of ['ai:triage', 'ai:awaiting-admission']) {
               if (labels.includes(name)) {
                 await github.rest.issues.removeLabel({
@@ -177,7 +215,7 @@ jobs:
                   repo: context.repo.repo,
                   issue_number: issue.number,
                   name,
-                });
+                }).catch(error => { if (error.status !== 404) throw error; });
               }
             }
             if (!labels.includes('ai:needs-info')) {
@@ -206,20 +244,37 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const issue = context.payload.issue;
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+            });
+            const labels = issue.labels.map(label => label.name);
+            if (labels.includes('ai:awaiting-admission') && !labels.includes('ai:needs-info')) {
+              console.log('Issue already returned to awaiting admission.');
+              return;
+            }
+            if (!labels.includes('ai:needs-info')) {
+              console.log('Issue is no longer awaiting information. Ignoring stale delivery.');
+              return;
+            }
 
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.number,
-              name: 'ai:needs-info',
-            });
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.number,
-              labels: ['ai:awaiting-admission'],
-            });
+            if (labels.includes('ai:needs-info')) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'ai:needs-info',
+              }).catch(error => { if (error.status !== 404) throw error; });
+            }
+            if (!labels.includes('ai:awaiting-admission')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['ai:awaiting-admission'],
+              });
+            }
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -245,7 +300,12 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const issue = context.payload.issue;
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+            });
+            const labels = issue.labels.map(label => label.name);
             const actor = context.payload.sender.login;
             const labelEvent = context.payload.action === 'labeled' &&
                                context.payload.label.name === 'ai:admitted';
@@ -253,6 +313,14 @@ jobs:
             // Only process when ai:admitted was just added (not on edit or other label changes)
             if (!labelEvent) {
               console.log('ai:admitted label was not just added. Skipping admission check.');
+              return;
+            }
+            if (labels.includes('ai:planning') || labels.includes('ai:forbidden')) {
+              console.log('Admission has already been consumed. No duplicate transition needed.');
+              return;
+            }
+            if (!labels.includes('ai:admitted')) {
+              console.log('Admission label is no longer present. Ignoring stale delivery.');
               return;
             }
 
@@ -276,7 +344,7 @@ jobs:
                 repo: context.repo.repo,
                 issue_number: issue.number,
                 name: 'ai:admitted',
-              });
+              }).catch(error => { if (error.status !== 404) throw error; });
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -293,7 +361,7 @@ jobs:
               return;
             }
 
-            if (issue.labels.some(label => label.name === 'risk:high')) {
+            if (labels.includes('risk:high')) {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -315,13 +383,17 @@ jobs:
               return;
             }
 
+            if (!labels.includes('ai:awaiting-admission')) {
+              throw new Error('Admission requires the issue to be awaiting admission.');
+            }
+
             // Authorized — transition to planning
             await github.rest.issues.removeLabel({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issue.number,
               name: 'ai:awaiting-admission',
-            });
+            }).catch(error => { if (error.status !== 404) throw error; });
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -363,7 +435,15 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const issue = context.payload.issue;
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+            });
+            if (issue.labels.some(label => label.name.startsWith('risk:'))) {
+              console.log('Risk label already present.');
+              return;
+            }
             // Extract risk from dropdown
             const body = issue.body;
             const riskMatch = body.match(/### Risk Level\s*\n+\s*(risk:\w+)/i);
