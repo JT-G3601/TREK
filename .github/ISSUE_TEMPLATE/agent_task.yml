@@ -1,0 +1,90 @@
+name: Agent Task
+description: Submit a task for the Agent-driven development workflow. Requires prior maintainer admission.
+title: "[agent] "
+labels: ["ai:triage"]
+body:
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: This task has been discussed and approved by a maintainer (Discord or otherwise)
+          required: true
+        - label: I understand this task will be implemented by an AI agent (Codex) and reviewed by an AI agent (Claude Code)
+          required: true
+        - label: I understand a human maintainer must approve the plan before implementation begins
+          required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: The observable outcome this task should achieve. One clear sentence.
+      placeholder: "e.g. Add a status badge to the README indicating the agent workflow pilot"
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Verifiable conditions that must be met for this task to be considered complete. Use bullet points.
+      placeholder: |
+        - [ ] The README displays a badge with the text "Agent Workflow"
+        - [ ] The badge links to docs/plans/agent-driven-development-workflow.md
+        - [ ] No existing badges or content are modified
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Background
+      description: Any additional context, motivation, or reproduction steps that help understand the task.
+      placeholder: Describe why this task is needed, what problem it solves, or steps to reproduce if it's a bug.
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Implementation limits — compatibility requirements, files that must not be changed, security boundaries, UX rules.
+      placeholder: |
+        - Only modify README.md
+        - Do not change any existing content
+        - Use English text matching the README style
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk Level
+      description: How risky is this change?
+      options:
+        - "risk:low — documentation, config, or cosmetic only"
+        - "risk:medium — logic change with test coverage"
+        - "risk:high — auth, data, migration, or deployment"
+    validations:
+      required: true
+
+  - type: input
+    id: files
+    attributes:
+      label: Relevant Files or Modules
+      description: Files or directories likely to be affected, if known. Comma-separated.
+      placeholder: "README.md, .gitignore"
+
+  - type: input
+    id: discussion_ref
+    attributes:
+      label: Discussion or Approval Reference
+      description: Link to the Discord discussion, maintainer approval comment, or other admission evidence.
+      placeholder: "https://discord.com/channels/.../..."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope_ack
+    attributes:
+      label: Scope Acknowledgment
+      options:
+        - label: This task does NOT involve authentication, authorization, secrets, database migrations, production config, release versioning, or branch protection changes
+          required: true

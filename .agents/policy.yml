@@ -1,0 +1,80 @@
+version: 1
+
+# === Repository Identity ===
+# Confirmed: 2026-07-11
+# This workflow runs in JT-G3601/TREK, a fork of mauriceboe/TREK.
+repository:
+  expected_full_name: "JT-G3601/TREK"
+  base_branch: dev
+  release_branch: main
+
+# === Contribution Admission ===
+# Confirmed: 2026-07-11
+# Developers complete Discord discussion manually before marking an Issue for the Agent workflow.
+# The ai:admitted label is the maintainer-issued signal that admission is complete.
+# It supplements Discord approval; it does not replace it.
+# CONTRIBUTING.md remains the authoritative human-contribution policy.
+contribution:
+  require_maintainer_admission: true
+  require_discussion_reference: true
+  admission_signal: "ai:admitted"
+
+# === Approval ===
+approval:
+  minimum_permission: write
+  expected_app_slug: "godot-agent-bot"
+
+# === Execution ===
+# Confirmed: 2026-07-11
+# CI mode: GitHub App (not GITHUB_TOKEN fallback).
+# Codex is an agent tool peer to Claude Code. They communicate via handoff.md and status.md.
+# The implementation-provider adapter contract will define the exact interface.
+execution:
+  implementation_provider: codex
+  ci_trigger_mode: github-app
+
+# === Plan Branch Lifecycle ===
+# Confirmed: 2026-07-11
+# Plan branches (ai-plan/<issue>-<slug>) are retained after merge for audit.
+branch_lifecycle:
+  plan_branches: retain
+
+# === Limits ===
+limits:
+  max_changed_files: 20
+  max_changed_lines: 1200
+  max_repair_rounds: 2
+
+# === Protected Paths ===
+protected_paths:
+  - ".github/workflows/**"
+  - ".agents/**"
+  - ".claude/**"
+  - "AGENTS.md"
+  - "CLAUDE.md"
+  - "CODEOWNERS"
+  - "server/**/migrations/**"
+  - "**/*secret*"
+  - "docker-compose.yml"
+
+generated_path_exceptions:
+  handoff: ".agents/handoff/issue-{issue_number}.md"
+
+# === Human Review Triggers ===
+require_human_review:
+  - authentication
+  - authorization
+  - database-migration
+  - dependency-major-update
+  - release
+  - workflow-permissions
+
+# === Release Boundary ===
+release:
+  agent_may_merge: false
+  agent_may_trigger: false
+
+# === Pending Decisions (recorded for Phase 1 completion) ===
+# - dev branch protection/ruleset: not verified (gh CLI unavailable, remote settings unqueried)
+# - GitHub App identity: to be created and configured, slug placeholder above
+# - Live provider and App credentials: not verified until the first GitHub dry run

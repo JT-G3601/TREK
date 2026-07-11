@@ -1,0 +1,378 @@
+name: AI Issue Triage
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    name: Triage Agent Task
+    runs-on: ubuntu-latest
+    # Only process Agent Task issues (detected by form structure in body)
+    # and issues that already carry agent workflow labels.
+    if: |
+      contains(github.event.issue.body, 'Pre-flight checklist') ||
+      contains(join(github.event.issue.labels.*.name, ','), 'ai:')
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+
+      - name: Export issue JSON for validator
+        id: export
+        shell: bash
+        run: |
+          node --input-type=module -e '
+            import { writeFileSync } from "node:fs";
+            const issue = {
+              number: Number(process.env.ISSUE_NUMBER),
+              title: process.env.ISSUE_TITLE,
+              body: process.env.ISSUE_BODY,
+              labels: JSON.parse(process.env.ISSUE_LABELS_JSON),
+            };
+            writeFileSync("issue.json", JSON.stringify(issue));
+          '
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_LABELS_JSON: ${{ toJSON(github.event.issue.labels) }}
+
+      - name: Run deterministic validator
+        id: validate
+        shell: bash
+        run: |
+          set +e
+          node .agents/scripts/validate-issue.mjs issue.json > result.json
+          validator_exit=$?
+          set -e
+          echo "exit_code=$validator_exit" >> "$GITHUB_OUTPUT"
+
+          if ! jq -e 'type == "array" and length == 1 and .[0].valid != null' result.json >/dev/null; then
+            echo 'Validator did not produce the expected result schema.' >&2
+            exit 1
+          fi
+
+      - name: Parse validation result
+        id: parse
+        run: |
+          valid=$(jq -r '.[0].valid' result.json)
+          echo "valid=$valid" >> "$GITHUB_OUTPUT"
+
+      # ── Step A: New agent task → validate and move to awaiting-admission ──
+      - name: Move valid issue to awaiting-admission
+        if: |
+          steps.parse.outputs.valid == 'true' &&
+          contains(join(github.event.issue.labels.*.name, ','), 'ai:triage') &&
+          !contains(join(github.event.issue.labels.*.name, ','), 'ai:awaiting-admission')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const issue = context.payload.issue;
+            const riskLabel = issue.labels.find(l => l.name.startsWith('risk:'));
+            const risk = riskLabel ? riskLabel.name : 'risk:low';
+
+            // Ensure risk label exists
+            if (!riskLabel) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: [risk],
+              });
+            }
+
+            // Transition: ai:triage → ai:awaiting-admission
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              name: 'ai:triage',
+            });
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: ['ai:awaiting-admission'],
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                '## Agent Workflow — Awaiting Admission',
+                '',
+                'This task has passed automated validation.',
+                `- Risk: \`${risk}\``,
+                '',
+                '**Next step:** A maintainer must add the `ai:admitted` label to admit this task into the workflow.',
+                'The `ai:admitted` label attests that contribution discussion requirements have been satisfied.',
+              ].join('\n'),
+            });
+
+      # ── Step B: Invalid issue → needs-info ──
+      - name: Flag invalid issue
+        if: |
+          steps.parse.outputs.valid == 'false' &&
+          (contains(github.event.issue.labels.*.name, 'ai:triage') ||
+           contains(github.event.issue.labels.*.name, 'ai:needs-info') ||
+           contains(github.event.issue.labels.*.name, 'ai:awaiting-admission'))
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+            const issue = context.payload.issue;
+            const validation = JSON.parse(fs.readFileSync('result.json', 'utf8'))[0];
+            const errors = Array.isArray(validation.errors) ? validation.errors : [];
+            const warnings = Array.isArray(validation.warnings) ? validation.warnings : [];
+
+            const body = [
+              '## Agent Workflow — Needs Information',
+              '',
+              'This task did not pass automated validation.',
+              '',
+              '**Errors (must fix):**',
+              ...errors.map(e => `- ❌ ${e}`),
+            ];
+            if (warnings.length > 0) {
+              body.push('', '**Warnings:**');
+              body.push(...warnings.map(w => `- ⚠️ ${w}`));
+            }
+            body.push(
+              '',
+              'Please edit the issue to fix the errors above. The issue will be re-validated automatically.',
+              '',
+              'If this task involves authentication, authorization, secrets, database migrations, ',
+              'production config, release versioning, or branch protection changes, it cannot be ',
+              'processed by the agent workflow. A maintainer should close this issue or mark it `ai:forbidden`.',
+            );
+
+            // Add needs-info and remove earlier active phases
+            const labels = issue.labels.map(l => l.name);
+            for (const name of ['ai:triage', 'ai:awaiting-admission']) {
+              if (labels.includes(name)) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name,
+                });
+              }
+            }
+            if (!labels.includes('ai:needs-info')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['ai:needs-info'],
+              });
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: body.join('\n'),
+            });
+
+      # ── Step B2: Re-validate needs-info on edit ──
+      - name: Re-validate fixed issue
+        if: |
+          steps.parse.outputs.valid == 'true' &&
+          contains(join(github.event.issue.labels.*.name, ','), 'ai:needs-info') &&
+          github.event.action == 'edited'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const issue = context.payload.issue;
+
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              name: 'ai:needs-info',
+            });
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: ['ai:awaiting-admission'],
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                '## Agent Workflow — Validation Passed',
+                '',
+                'The issue has been updated and now passes automated validation.',
+                'Transitioning back to `ai:awaiting-admission`.',
+                '',
+                '**Next step:** A maintainer must add the `ai:admitted` label.',
+              ].join('\n'),
+            });
+
+      # ── Step C: Maintainer admission → planning ──
+      - name: Process maintainer admission
+        if: |
+          contains(join(github.event.issue.labels.*.name, ','), 'ai:admitted') &&
+          contains(join(github.event.issue.labels.*.name, ','), 'ai:awaiting-admission') &&
+          !contains(join(github.event.issue.labels.*.name, ','), 'ai:planning')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const issue = context.payload.issue;
+            const actor = context.payload.sender.login;
+            const labelEvent = context.payload.action === 'labeled' &&
+                               context.payload.label.name === 'ai:admitted';
+
+            // Only process when ai:admitted was just added (not on edit or other label changes)
+            if (!labelEvent) {
+              console.log('ai:admitted label was not just added. Skipping admission check.');
+              return;
+            }
+
+            // Verify the actor has write permission or higher
+            let permission = 'none';
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: actor,
+              });
+              permission = data.permission;
+            } catch (_) {
+              permission = 'none';
+            }
+
+            if (!['admin', 'maintain', 'write'].includes(permission)) {
+              // Unauthorized — remove the label and comment
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'ai:admitted',
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: [
+                  '## Unauthorized Admission Attempt',
+                  '',
+                  `@${actor} does not have sufficient repository permission to add the \`ai:admitted\` label.`,
+                  '',
+                  'This label requires **write**, **maintain**, or **admin** permission. The label has been removed.',
+                  'Only authorized maintainers may admit tasks into the agent workflow.',
+                ].join('\n'),
+              });
+              return;
+            }
+
+            if (issue.labels.some(label => label.name === 'risk:high')) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'ai:awaiting-admission',
+              }).catch(error => { if (error.status !== 404) throw error; });
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['ai:forbidden'],
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: 'High-risk tasks cannot enter automated planning. A human-authored process is required.',
+              });
+              return;
+            }
+
+            // Authorized — transition to planning
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              name: 'ai:awaiting-admission',
+            });
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: ['ai:planning'],
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                '## Agent Workflow — Planning',
+                '',
+                `Task admitted by @${actor}. Transitioning to planning.`,
+                '',
+                'Claude Code will explore the repository and produce an implementation plan.',
+                'The plan will be published for human review before any code is written.',
+              ].join('\n'),
+            });
+
+      # ── Step D: Idempotency guard — detect re-opened or re-submitted issues ──
+      - name: Detect duplicate admission
+        if: |
+          contains(join(github.event.issue.labels.*.name, ','), 'ai:admitted') &&
+          contains(join(github.event.issue.labels.*.name, ','), 'ai:planning')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            console.log('Issue is already in planning. No duplicate transition needed.');
+
+      # ── Step E: Ensure risk label is present ──
+      - name: Ensure risk label
+        if: |
+          steps.parse.outputs.valid == 'true' &&
+          !contains(join(github.event.issue.labels.*.name, ','), 'risk:')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const issue = context.payload.issue;
+            // Extract risk from dropdown
+            const body = issue.body;
+            const riskMatch = body.match(/### Risk Level\s*\n+\s*(risk:\w+)/i);
+            const risk = riskMatch ? riskMatch[1].trim() : 'risk:low';
+            if (['risk:low', 'risk:medium', 'risk:high'].includes(risk)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: [risk],
+              });
+            }

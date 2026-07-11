@@ -1,0 +1,9 @@
+{
+  "number": 100,
+  "title": "[agent] Add status badge to README",
+  "body": "### Pre-flight checklist\n\n- [x] This task has been discussed and approved by a maintainer (Discord or otherwise)\n- [x] I understand this task will be implemented by an AI agent (Codex) and reviewed by an AI agent (Claude Code)\n- [x] I understand a human maintainer must approve the plan before implementation begins\n\n### Goal\n\nAdd a status badge to the README indicating the agent workflow pilot is active on this fork.\n\n### Acceptance Criteria\n\n- [ ] README displays a badge with the text \"AI Workflow\"\n- [ ] Badge links to the plan document\n- [ ] Only README.md is modified\n\n### Context / Background\n\nThis fork is used to develop and test the agent-driven development workflow.\n\n### Constraints\n\n- Only modify README.md\n- Use English text\n\n### Risk Level\n\nrisk:low — documentation, config, or cosmetic only\n\n### Relevant Files or Modules\n\nREADME.md\n\n### Discussion or Approval Reference\n\nhttps://discord.com/channels/example\n\n### Scope Acknowledgment\n\n- [x] This task does NOT involve authentication, authorization, secrets, database migrations, production config, release versioning, or branch protection changes\n",
+  "labels": [
+    { "name": "ai:triage" },
+    { "name": "risk:low" }
+  ]
+}

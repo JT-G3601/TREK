@@ -35,7 +35,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
-.claude/
 
 # Logs
 logs
@@ -68,3 +67,8 @@ test-data
 .full-review
 # Wiki offline snapshot is baked in at build, not committed (duplicates wiki/)
 server/assets/wiki/
+
+# Agent handoff - track only issue handoffs and the template
+.agents/handoff/*
+!.agents/handoff/TEMPLATE.md
+!.agents/handoff/issue-*.md
