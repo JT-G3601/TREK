@@ -179,7 +179,7 @@ jobs:
           sandbox: workspace-write
           safety-strategy: drop-sudo
           codex-version: 0.143.0
-          allow-bots: true
+          allow-bot-users: "godot-agent-bot[bot]"
           codex-args: '["--ephemeral", "--ignore-user-config", "--strict-config"]'
 
       - name: Export repair patch
