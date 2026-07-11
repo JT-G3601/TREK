@@ -64,6 +64,39 @@ try {
     }
   }
 
+  const triageWorkflow = readFileSync(
+    resolve(root, ".github/workflows/ai-issue-triage.yml"),
+    "utf8"
+  );
+  const triageRequirements = [
+    "group: ai-issue-triage-${{ github.event.issue.number }}",
+    "cancel-in-progress: false",
+    "Issue is no longer in triage. Ignoring stale delivery.",
+    "Issue is no longer in a validation phase. Ignoring stale delivery.",
+    "Issue is no longer awaiting information. Ignoring stale delivery.",
+  ];
+  const missingTriageRequirements = triageRequirements.filter(
+    (value) => !triageWorkflow.includes(value)
+  );
+  const currentIssueReads = triageWorkflow.match(/github\.rest\.issues\.get/g) || [];
+  const labelRemovals = triageWorkflow.match(
+    /github\.rest\.issues\.removeLabel/g
+  ) || [];
+  const tolerantRemovals = triageWorkflow.match(
+    /catch\(error => \{ if \(error\.status !== 404\) throw error; \}\);/g
+  ) || [];
+  if (
+    missingTriageRequirements.length > 0 ||
+    currentIssueReads.length < 5 ||
+    labelRemovals.length !== tolerantRemovals.length
+  ) {
+    failures.push(
+      `ai-issue-triage.yml: missing concurrency/idempotency safeguards; missing ${missingTriageRequirements.join(", ") || "none"}`
+    );
+  } else {
+    console.log("PASS triage concurrency and idempotency safeguards");
+  }
+
   run(
     "valid issue",
     ".agents/scripts/validate-issue.mjs",
