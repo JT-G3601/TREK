@@ -25,6 +25,7 @@ jobs:
     permissions:
       contents: read
       issues: read
+      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
