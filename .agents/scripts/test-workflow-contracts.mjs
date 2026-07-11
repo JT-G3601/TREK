@@ -111,6 +111,24 @@ try {
     }
   }
 
+  for (const workflow of ["ai-implement.yml", "ai-repair.yml"]) {
+    const source = readFileSync(
+      resolve(root, ".github/workflows", workflow),
+      "utf8"
+    );
+    const codexStep = workflowStep(source, "Run Codex through the protected API proxy");
+    if (
+      !codexStep.includes('allow-bot-users: "godot-agent-bot[bot]"') ||
+      codexStep.includes("allow-bots: true")
+    ) {
+      failures.push(
+        `${workflow}: Codex Action must allow only godot-agent-bot[bot]`
+      );
+    } else {
+      console.log(`PASS exact Codex bot allowlist: ${workflow}`);
+    }
+  }
+
   const planWorkflow = readFileSync(
     resolve(root, ".github/workflows/ai-plan.yml"),
     "utf8"
