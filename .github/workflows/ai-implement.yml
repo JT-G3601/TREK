@@ -450,6 +450,12 @@ jobs:
           name: generation-output-${{ needs.preflight.outputs.issue_number }}
           path: /tmp/generation
 
+      - name: Download approved context
+        uses: actions/download-artifact@v5
+        with:
+          name: approved-context-${{ needs.preflight.outputs.issue_number }}
+          path: /tmp/approved-context
+
       - name: Ensure dev has not advanced
         env:
           EXPECTED_BASE: ${{ needs.preflight.outputs.base_sha }}

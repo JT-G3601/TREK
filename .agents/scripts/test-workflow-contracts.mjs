@@ -243,6 +243,33 @@ try {
     }
   }
 
+  const implementWorkflow = readFileSync(
+    resolve(root, ".github/workflows/ai-implement.yml"),
+    "utf8"
+  );
+  const implementPublishJob = workflowJob(implementWorkflow, "publish");
+  const downloadApprovedContextStep = workflowStep(
+    implementPublishJob,
+    "Download approved context"
+  );
+  if (
+    !downloadApprovedContextStep.includes(
+      "uses: actions/download-artifact@v5"
+    ) ||
+    !downloadApprovedContextStep.includes(
+      "name: approved-context-${{ needs.preflight.outputs.issue_number }}"
+    ) ||
+    !downloadApprovedContextStep.includes("path: /tmp/approved-context")
+  ) {
+    failures.push(
+      "ai-implement.yml: publish job must download the approved context it consumes"
+    );
+  } else {
+    console.log(
+      "PASS approved context download: ai-implement.yml publish job"
+    );
+  }
+
   const planWorkflow = readFileSync(
     resolve(root, ".github/workflows/ai-plan.yml"),
     "utf8"
