@@ -127,6 +127,19 @@ try {
     } else {
       console.log(`PASS exact Codex bot allowlist: ${workflow}`);
     }
+
+    if (
+      !codexStep.includes(
+        'codex-args: \'["--ephemeral", "--strict-config"]\''
+      ) ||
+      codexStep.includes("--ignore-user-config")
+    ) {
+      failures.push(
+        `${workflow}: Codex Action must load its protected proxy config`
+      );
+    } else {
+      console.log(`PASS Codex protected proxy config: ${workflow}`);
+    }
   }
 
   const planWorkflow = readFileSync(
