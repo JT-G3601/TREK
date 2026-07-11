@@ -42,6 +42,14 @@ function workflowJob(source, name) {
   );
 }
 
+function workflowStep(source, name) {
+  const marker = `      - name: ${name}`;
+  const start = source.indexOf(marker);
+  if (start === -1) return "";
+  const nextStep = source.indexOf("\n      - name:", start + marker.length);
+  return source.slice(start, nextStep === -1 ? source.length : nextStep);
+}
+
 try {
   for (const workflow of ["ai-plan-approval.yml", "ai-repair.yml"]) {
     const source = readFileSync(
@@ -55,9 +63,9 @@ try {
     }
   }
 
-  for (const [workflow, jobName] of [
-    ["ai-plan.yml", "plan"],
-    ["ai-review.yml", "review"],
+  for (const [workflow, jobName, stepName] of [
+    ["ai-plan.yml", "plan", "Generate plan with Claude Code"],
+    ["ai-review.yml", "review", "Review with Claude Code"],
   ]) {
     const source = readFileSync(
       resolve(root, ".github/workflows", workflow),
@@ -86,12 +94,19 @@ try {
       permissionsStart === -1 || stepsStart === -1
         ? ""
         : claudeJob.slice(permissionsStart, stepsStart);
-    if (!permissions.includes("\n      id-token: write")) {
+    const claudeStep = workflowStep(claudeJob, stepName);
+    if (!claudeStep.includes("github_token: ${{ github.token }}")) {
       failures.push(
-        `${workflow}: ${jobName} job must grant id-token: write to Claude Code Action`
+        `${workflow}: ${stepName} must receive the read-only workflow token`
+      );
+    } else if (permissions.includes("\n      id-token: write")) {
+      failures.push(
+        `${workflow}: ${jobName} job must not grant unused OIDC access`
       );
     } else {
-      console.log(`PASS Claude OIDC permission: ${workflow} ${jobName} job`);
+      console.log(
+        `PASS explicit Claude workflow token: ${workflow} ${jobName} job`
+      );
     }
   }
 
@@ -99,14 +114,6 @@ try {
     resolve(root, ".github/workflows/ai-issue-triage.yml"),
     "utf8"
   );
-  function workflowStep(source, name) {
-    const marker = `      - name: ${name}`;
-    const start = source.indexOf(marker);
-    if (start === -1) return "";
-    const nextStep = source.indexOf("\n      - name:", start + marker.length);
-    return source.slice(start, nextStep === -1 ? source.length : nextStep);
-  }
-
   const revalidateStep = workflowStep(triageWorkflow, "Re-validate fixed issue");
   const admissionStep = workflowStep(triageWorkflow, "Process maintainer admission");
   const admissionRiskRequirements = [
