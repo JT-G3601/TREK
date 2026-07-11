@@ -30,6 +30,18 @@ function run(name, script, args, expectedStatus) {
   }
 }
 
+function workflowJob(source, name) {
+  const marker = `  ${name}:\n`;
+  const start = source.indexOf(marker);
+  if (start === -1) return "";
+  const remainder = source.slice(start + marker.length);
+  const nextJob = remainder.search(/\n  [a-zA-Z0-9_-]+:\n/);
+  return source.slice(
+    start,
+    nextJob === -1 ? source.length : start + marker.length + nextJob
+  );
+}
+
 try {
   for (const workflow of ["ai-plan-approval.yml", "ai-repair.yml"]) {
     const source = readFileSync(
@@ -43,7 +55,10 @@ try {
     }
   }
 
-  for (const workflow of ["ai-plan.yml", "ai-review.yml"]) {
+  for (const [workflow, jobName] of [
+    ["ai-plan.yml", "plan"],
+    ["ai-review.yml", "review"],
+  ]) {
     const source = readFileSync(
       resolve(root, ".github/workflows", workflow),
       "utf8"
@@ -62,6 +77,21 @@ try {
       );
     } else {
       console.log(`PASS DeepSeek provider: ${workflow}`);
+    }
+
+    const claudeJob = workflowJob(source, jobName);
+    const permissionsStart = claudeJob.indexOf("\n    permissions:\n");
+    const stepsStart = claudeJob.indexOf("\n    steps:\n", permissionsStart);
+    const permissions =
+      permissionsStart === -1 || stepsStart === -1
+        ? ""
+        : claudeJob.slice(permissionsStart, stepsStart);
+    if (!permissions.includes("\n      id-token: write")) {
+      failures.push(
+        `${workflow}: ${jobName} job must grant id-token: write to Claude Code Action`
+      );
+    } else {
+      console.log(`PASS Claude OIDC permission: ${workflow} ${jobName} job`);
     }
   }
 
