@@ -90,6 +90,12 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
+            const fs = require('node:fs');
+            const validation = JSON.parse(fs.readFileSync('result.json', 'utf8'))[0];
+            const risk = validation.risk;
+            if (!['risk:low', 'risk:medium', 'risk:high'].includes(risk)) {
+              throw new Error('Validator did not return a supported risk classification.');
+            }
             const { data: issue } = await github.rest.issues.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -105,11 +111,18 @@ jobs:
               return;
             }
 
-            const riskLabel = issue.labels.find(label => label.name.startsWith('risk:'));
-            const risk = riskLabel ? riskLabel.name : 'risk:low';
-
-            // Ensure risk label exists
-            if (!riskLabel) {
+            // Synchronize the single risk label to the validated Issue Form value.
+            for (const name of labels.filter(label => label.startsWith('risk:'))) {
+              if (name !== risk) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name,
+                }).catch(error => { if (error.status !== 404) throw error; });
+              }
+            }
+            if (!labels.includes(risk)) {
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -244,6 +257,12 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
+            const fs = require('node:fs');
+            const validation = JSON.parse(fs.readFileSync('result.json', 'utf8'))[0];
+            const declaredRisk = validation.risk;
+            if (!['risk:low', 'risk:medium', 'risk:high'].includes(declaredRisk)) {
+              throw new Error('Validator did not return a supported risk classification.');
+            }
             const { data: issue } = await github.rest.issues.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -361,7 +380,7 @@ jobs:
               return;
             }
 
-            if (labels.includes('risk:high')) {
+            if (declaredRisk === 'risk:high') {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -428,31 +447,40 @@ jobs:
 
       # ── Step E: Ensure risk label is present ──
       - name: Ensure risk label
-        if: |
-          steps.parse.outputs.valid == 'true' &&
-          !contains(join(github.event.issue.labels.*.name, ','), 'risk:')
+        if: steps.parse.outputs.valid == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
+            const fs = require('node:fs');
+            const validation = JSON.parse(fs.readFileSync('result.json', 'utf8'))[0];
+            const risk = validation.risk;
+            if (!['risk:low', 'risk:medium', 'risk:high'].includes(risk)) {
+              throw new Error('Validator did not return a supported risk classification.');
+            }
             const { data: issue } = await github.rest.issues.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.issue.number,
             });
-            if (issue.labels.some(label => label.name.startsWith('risk:'))) {
-              console.log('Risk label already present.');
-              return;
+            const labels = issue.labels.map(label => label.name);
+            for (const name of labels.filter(label => label.startsWith('risk:'))) {
+              if (name !== risk) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name,
+                }).catch(error => { if (error.status !== 404) throw error; });
+              }
             }
-            // Extract risk from dropdown
-            const body = issue.body;
-            const riskMatch = body.match(/### Risk Level\s*\n+\s*(risk:\w+)/i);
-            const risk = riskMatch ? riskMatch[1].trim() : 'risk:low';
-            if (['risk:low', 'risk:medium', 'risk:high'].includes(risk)) {
+            if (!labels.includes(risk)) {
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
                 labels: [risk],
               });
+            } else {
+              console.log(`Risk label already synchronized to ${risk}.`);
             }

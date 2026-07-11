@@ -1,0 +1,8 @@
+{
+  "number": 105,
+  "title": "[agent] High-risk gate test",
+  "body": "### Pre-flight checklist\n\n- [x] This task has been discussed and approved by a maintainer (Discord or otherwise)\n- [x] I understand this task will be implemented by an AI agent (Codex) and reviewed by an AI agent (Claude Code)\n- [x] I understand a human maintainer must approve the plan before implementation begins\n\n### Goal\n\nVerify that high-risk tasks cannot enter automated planning.\n\n### Acceptance Criteria\n\n- [ ] The task is classified as risk:high\n- [ ] Admission transitions to ai:forbidden\n\n### Context / Background\n\nStage 4 high-risk gate fixture.\n\n### Constraints\n\n- Do not invoke a model\n\n### Risk Level\n\nrisk:high — auth, data, migration, or deployment\n\n### Relevant Files or Modules\n\n.github/workflows/ai-issue-triage.yml\n\n### Discussion or Approval Reference\n\nMaintainer-approved high-risk regression fixture.\n\n### Scope Acknowledgment\n\n- [x] This task does NOT involve authentication, authorization, secrets, database migrations, production config, release versioning, or branch protection changes\n",
+  "labels": [
+    { "name": "ai:triage" }
+  ]
+}
