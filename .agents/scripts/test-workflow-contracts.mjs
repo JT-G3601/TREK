@@ -110,6 +110,17 @@ try {
         `PASS explicit Claude workflow token: ${workflow} ${jobName} job`
       );
     }
+
+    if (
+      workflow === "ai-review.yml" &&
+      !claudeStep.includes('allowed_bots: "godot-agent-bot[bot]"')
+    ) {
+      failures.push(
+        "ai-review.yml: independent review must allow the App bot that creates agent PRs"
+      );
+    } else if (workflow === "ai-review.yml") {
+      console.log("PASS independent review App bot allowlist: ai-review.yml");
+    }
   }
 
   for (const [workflow, stepName] of [
