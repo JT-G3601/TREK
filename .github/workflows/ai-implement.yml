@@ -143,12 +143,13 @@ jobs:
           retention-days: 1
 
   generate:
-    name: Generate Patch with Codex
+    name: Generate Patch with DeepSeek Claude Code
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: preflight
     permissions:
       contents: read
+      issues: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -180,25 +181,33 @@ jobs:
           job. Leave the completed changes in the working tree and summarize them.
           PROMPT
 
-      - name: Run Codex through the protected API proxy
-        id: codex
-        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1
+      - name: Run implementation with DeepSeek Claude Code
+        id: implementer
+        uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342 # v1
+        env:
+          ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: .agent-input/prompt.md
-          output-file: /tmp/codex-final-message.txt
-          working-directory: .
-          sandbox: workspace-write
-          safety-strategy: drop-sudo
-          codex-version: 0.143.0
-          allow-bot-users: "godot-agent-bot[bot]"
-          codex-args: '["--ephemeral", "--strict-config"]'
+          anthropic_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
+          github_token: ${{ github.token }}
+          allowed_bots: "godot-agent-bot[bot]"
+          track_progress: false
+          display_report: false
+          prompt: |
+            Read .agent-input/prompt.md and follow it exactly. Make the approved
+            changes in the working tree, then return the requested structured output.
+          claude_args: >-
+            --model deepseek-v4-pro
+            --max-turns 20
+            --allowedTools "Read,Glob,Grep,Edit,Write"
+            --disallowedTools "Bash,NotebookEdit,WebFetch,WebSearch,TaskOutput,KillTask"
+            --json-schema '{"type":"object","additionalProperties":false,"properties":{"summary":{"type":"string","minLength":1},"partial_failure":{"type":"boolean"}},"required":["summary","partial_failure"]}'
 
       - name: Export complete binary patch
         env:
           BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PLAN_SHA: ${{ needs.preflight.outputs.plan_sha }}
           PLAN_DIGEST: ${{ needs.preflight.outputs.plan_digest }}
+          STRUCTURED_OUTPUT: ${{ steps.implementer.outputs.structured_output }}
         run: |
           test "$(git rev-parse HEAD)" = "$BASE_SHA"
           rm -rf .agent-input
@@ -208,14 +217,20 @@ jobs:
           git diff --binary --full-index --no-ext-diff > /tmp/agent-output/patch.diff
           test -s /tmp/agent-output/patch.diff
           node --input-type=module -e '
-            import { readFileSync, writeFileSync } from "node:fs";
+            import { writeFileSync } from "node:fs";
+            const result = JSON.parse(process.env.STRUCTURED_OUTPUT);
+            if (result.partial_failure !== false || !result.summary?.trim()) {
+              throw new Error("Implementation provider reported an incomplete result.");
+            }
             writeFileSync("/tmp/agent-output/summary.json", JSON.stringify({
-              provider: "openai/codex-action",
-              codex_version: "0.143.0",
+              provider: "anthropics/claude-code-action",
+              provider_revision: "e90deca47693f9457b72f2b53c17d7c445a87342",
+              platform: "deepseek",
+              model: "deepseek-v4-pro",
               plan_sha: process.env.PLAN_SHA,
               plan_digest: process.env.PLAN_DIGEST,
               partial_failure: false,
-              final_message: readFileSync("/tmp/codex-final-message.txt", "utf8"),
+              final_message: result.summary.trim(),
             }, null, 2));
           '
 

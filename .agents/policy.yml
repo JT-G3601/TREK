@@ -27,15 +27,15 @@ approval:
 # === Execution ===
 # Confirmed: 2026-07-11
 # CI mode: GitHub App (not GITHUB_TOKEN fallback).
-# Codex is an agent tool peer to Claude Code. They communicate via handoff.md and status.md.
-# The implementation-provider adapter contract will define the exact interface.
+# Temporary pilot fallback: implementation and repair use Claude Code with DeepSeek
+# until an OpenAI API quota is available again. The adapter contract defines the interface.
 execution:
-  implementation_provider: codex
+  implementation_provider: claude-code-deepseek
   ci_trigger_mode: github-app
 
-# Planning and review run through Claude Code with DeepSeek's reviewed
-# Anthropic-compatible endpoint. Workflows currently enforce these values;
-# provider-neutral routing is a Post-MVP backlog item.
+# All model phases currently use Claude Code with DeepSeek's reviewed
+# Anthropic-compatible endpoint. Workflows enforce these values while
+# provider-neutral routing remains a Post-MVP backlog item.
 model_providers:
   planning:
     runtime: claude-code-action
@@ -45,6 +45,20 @@ model_providers:
     model: deepseek-v4-pro
     secret_name: DEEPSEEK_API_KEY
   review:
+    runtime: claude-code-action
+    platform: deepseek
+    api_protocol: anthropic-compatible
+    endpoint: "https://api.deepseek.com/anthropic"
+    model: deepseek-v4-pro
+    secret_name: DEEPSEEK_API_KEY
+  implementation:
+    runtime: claude-code-action
+    platform: deepseek
+    api_protocol: anthropic-compatible
+    endpoint: "https://api.deepseek.com/anthropic"
+    model: deepseek-v4-pro
+    secret_name: DEEPSEEK_API_KEY
+  repair:
     runtime: claude-code-action
     platform: deepseek
     api_protocol: anthropic-compatible

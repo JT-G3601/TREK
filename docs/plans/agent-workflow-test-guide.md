@@ -231,8 +231,8 @@ Settings → Secrets and variables → Actions → New repository secret
 |---|---|
 | `AGENT_APP_ID` | 创建短期 GitHub App token |
 | `AGENT_APP_PRIVATE_KEY` | App private key 完整 PEM 内容 |
-| `OPENAI_API_KEY` | Codex implementation/repair provider |
-| `DEEPSEEK_API_KEY` | DeepSeek backend for Claude Code planning/review |
+| `OPENAI_API_KEY` | Reserved for restoring the Codex provider; temporarily unused |
+| `DEEPSEEK_API_KEY` | DeepSeek backend for planning, implementation, review, and repair |
 
 不要把 Secret 值写入 Issue、日志、policy、handoff 或 workflow 文件。
 
@@ -504,13 +504,13 @@ ai:approved
 
 如果 Approval Check 的 owner 是 `github-actions` 或其它 App，立即停止测试。
 
-### 9.6 验证 Codex Implementation
+### 9.6 验证 DeepSeek Implementation
 
 检查 `AI Implement` workflow：
 
 ```text
 Verify Admission and Plan Approval
-→ Generate Patch with Codex
+→ Generate Patch with DeepSeek Claude Code
 → Authoritative Verification
 → Deterministic Scope Guard
 → Publish Draft PR
@@ -519,8 +519,9 @@ Verify Admission and Plan Approval
 必须满足：
 
 - [ ] Preflight 验证的是刚批准的 Plan SHA
-- [ ] Codex job 没有 repository write permission
-- [ ] Codex 只修改批准路径
+- [ ] DeepSeek implementation job 没有 repository write permission
+- [ ] DeepSeek implementation provider 只修改批准路径
+- [ ] Provider 禁止 Bash、Web、Notebook 和 background-task tools
 - [ ] `npm test` 真实返回成功
 - [ ] `npm run lint` 成功
 - [ ] `npm run format:check` 成功
@@ -634,7 +635,7 @@ ai:done
 
 ```text
 Bind Repair Authorization
-→ Codex Repair
+→ DeepSeek Claude Code Repair
 → Repair Verification
 → Repair Scope Guard
 → App pushes repair commit
@@ -647,7 +648,7 @@ Bind Repair Authorization
 
 - [ ] Repair 绑定的 review comment 对应当前错误 head
 - [ ] Repair round 从 1 开始
-- [ ] Codex 只修复批准文件
+- [ ] DeepSeek repair provider 只修复批准文件
 - [ ] Repair 通过测试和 scope guard 后才 Push
 - [ ] `ai:repair-approved` 被消费
 - [ ] 新 head 重新执行 CI 和 Review

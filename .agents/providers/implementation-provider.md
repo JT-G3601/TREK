@@ -2,16 +2,19 @@
 
 ## Purpose
 
-This contract defines the interface between the TREK agent workflow controller and the implementation provider (Codex). The controller owns authorization and repository mutation; the provider generates changes under read-only constraints.
+This contract defines the interface between the TREK agent workflow controller and the implementation provider. The controller owns authorization and repository mutation; the provider generates working-tree changes without repository write credentials.
 
 ## Provider Identity
 
-- **Provider name**: Codex
-- **Provider type**: External agent tool, peer to Claude Code
+- **Provider name**: DeepSeek V4 Pro through Claude Code (temporary fallback)
+- **Provider type**: External implementation agent
 - **Communication**: File-based handoff (`.agents/handoff/issue-<number>.md`) and status (`status.md`)
-- **Runner**: `openai/codex-action`
-- **Pinned action commit**: `52fe01ec70a42f454c9d2ebd47598f9fd6893d56` (`v1` at verification time)
-- **Pinned Codex CLI version**: `0.143.0`
+- **Runner**: `anthropics/claude-code-action`
+- **Pinned action commit**: `e90deca47693f9457b72f2b53c17d7c445a87342` (`v1` at verification time)
+- **Platform**: DeepSeek Anthropic-compatible API
+- **Endpoint**: `https://api.deepseek.com/anthropic`
+- **Model**: `deepseek-v4-pro`
+- **Fallback reason**: OpenAI API quota is unavailable during the workflow pilot; restore Codex through a reviewed adapter change when quota becomes available.
 
 ## Invocation
 
@@ -23,7 +26,7 @@ The controller supplies the following to the provider:
 |-------|--------|--------|
 | Approved handoff | `.agents/handoff/issue-<number>.md` | Plan branch, approved revision |
 | Repository checkout | Git worktree at `dev` head | Fresh checkout, no write credentials |
-| Provider credential | `OPENAI_API_KEY` passed to the action's protected Responses API proxy | Repository secret, not exposed to tests or publisher |
+| Provider credential | `DEEPSEEK_API_KEY` passed as the action's `anthropic_api_key` input | Repository secret, not exposed to tests or publisher |
 
 ### Outputs
 
@@ -41,14 +44,20 @@ jobs from the patch; they are not trusted from the model response.
 ### Invocation
 
 ```yaml
-- uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56
+- uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342
+  env:
+    ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
   with:
-    openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-    prompt-file: .agent-input/prompt.md
-    sandbox: workspace-write
-    safety-strategy: drop-sudo
-    codex-version: 0.143.0
-    codex-args: '["--ephemeral", "--ignore-user-config", "--strict-config"]'
+    anthropic_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
+    github_token: ${{ github.token }}
+    allowed_bots: "godot-agent-bot[bot]"
+    track_progress: false
+    prompt: Read the controller-owned prompt file and implement the approved plan.
+    claude_args: >-
+      --model deepseek-v4-pro
+      --max-turns 20
+      --allowedTools "Read,Glob,Grep,Edit,Write"
+      --disallowedTools "Bash,NotebookEdit,WebFetch,WebSearch,TaskOutput,KillTask"
 ```
 
 The controller exports the complete working-tree change with
@@ -61,8 +70,9 @@ job must fail when the patch is empty or the provider changes `HEAD`.
 - The provider credential must be available to the generation job only.
 - The verification job must not receive the provider credential.
 - The publisher job must not receive the provider credential.
-- The official action's protected Responses API proxy is the credential broker;
-  the raw API key must not be exported as a general job environment variable.
+- The raw API key is passed only through the action's secret input.
+- Bash, web, notebook, and background-task tools are denied while the provider credential is present.
+- The provider receives a read-only workflow token and cannot publish repository changes.
 - `persist-credentials: false` in every checkout available to the provider.
 
 ## Sandbox Constraints
@@ -71,7 +81,7 @@ job must fail when the patch is empty or the provider changes `HEAD`.
 |------------|-------|
 | Network egress | Required (model API) |
 | Network ingress to repository | None |
-| Filesystem write scope | Working directory only |
+| Filesystem write scope | Claude Code `Edit` and `Write` tools in the checkout; deterministic scope guard enforces Approved Paths |
 | Git operations | Disallowed (no write credential available) |
 | Generated code execution | Project tests and generated application code are forbidden in generation and publisher jobs; authoritative execution occurs only in the credential-free verification job |
 | Timeout | 15 minutes at the generation-job boundary |
