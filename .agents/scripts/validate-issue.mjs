@@ -36,25 +36,29 @@ const VALID_RISK_LABELS = new Set(["risk:low", "risk:medium", "risk:high"]);
  *   ### Field Label\n\nvalue\n\n### Next Field
  */
 function extractField(body, fieldLabel) {
-  // Match the heading followed by content until the next heading or end
-  const patterns = [
-    // English labels (from the form)
-    new RegExp(
-      `###\\s+${escapeRegex(fieldLabel)}\\s*\\n+([\\s\\S]*?)(?=\\n###\\s|$)`,
-      "i"
-    ),
-  ];
-  for (const pattern of patterns) {
-    const match = body.match(pattern);
-    if (match) {
-      return match[1].trim();
+  const lines = body.split(/\r?\n/);
+  const expectedLabel = fieldLabel.trim().toLowerCase();
+  let contentStart = -1;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const heading = lines[index].match(/^###[ \t]+(.+?)[ \t]*$/);
+    if (heading && heading[1].trim().toLowerCase() === expectedLabel) {
+      contentStart = index + 1;
+      break;
     }
   }
-  return null;
-}
 
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (contentStart === -1) return null;
+
+  let contentEnd = lines.length;
+  for (let index = contentStart; index < lines.length; index += 1) {
+    if (/^###[ \t]+/.test(lines[index])) {
+      contentEnd = index;
+      break;
+    }
+  }
+
+  return lines.slice(contentStart, contentEnd).join("\n").trim();
 }
 
 /**

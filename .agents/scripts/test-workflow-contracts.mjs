@@ -103,7 +103,12 @@ try {
     [join(fixtures, "valid-low-risk.json")],
     0
   );
-  for (const file of ["missing-goal.json", "unchecked-scope.json", "missing-scope-ack.json"]) {
+  for (const file of [
+    "missing-goal.json",
+    "blank-goal.json",
+    "unchecked-scope.json",
+    "missing-scope-ack.json",
+  ]) {
     run(
       `invalid issue: ${file}`,
       ".agents/scripts/validate-issue.mjs",
@@ -126,6 +131,27 @@ try {
     [missingDiscussionPath],
     1
   );
+
+  function blankSection(issue, heading) {
+    const copy = structuredClone(issue);
+    const sectionPattern = new RegExp(
+      `(### ${heading}[^\\n]*\\n)[\\s\\S]*?(?=\\n### |$)`
+    );
+    copy.body = copy.body.replace(sectionPattern, `$1\n`);
+    return copy;
+  }
+
+  for (const [heading, name] of [
+    ["Acceptance Criteria", "blank acceptance criteria"],
+    ["Discussion or Approval Reference", "blank discussion reference"],
+  ]) {
+    const blankPath = join(temp, `${name.replaceAll(" ", "-")}.json`);
+    const validIssue = JSON.parse(
+      readFileSync(join(fixtures, "valid-low-risk.json"), "utf8")
+    );
+    writeFileSync(blankPath, JSON.stringify(blankSection(validIssue, heading)));
+    run(name, ".agents/scripts/validate-issue.mjs", [blankPath], 1);
+  }
 
   for (const handoff of ["issue-walkthrough-1.md", "issue-walkthrough-2.md"]) {
     run(
