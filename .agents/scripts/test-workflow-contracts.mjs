@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { requiresProjectVerification } from "./classify-verification.mjs";
 import { validate as validateIssue } from "./validate-issue.mjs";
 import { readHandoffMetadata } from "./read-handoff-metadata.mjs";
 
@@ -170,6 +171,48 @@ try {
       failures.push(`policy.json: invalid ${phase} provider declaration`);
     } else {
       console.log(`PASS DeepSeek ${phase} provider policy`);
+    }
+  }
+
+  for (const [name, paths, expected] of [
+    ["docs-only", ["docs/agent-workflow-smoke-test.md"], false],
+    ["wiki-only", ["wiki/README.md"], false],
+    ["root readme", ["README.md"], false],
+    ["application source", ["server/src/index.ts"], true],
+    ["dependency manifest", ["package-lock.json"], true],
+    ["mixed scope", ["docs/guide.md", "client/src/App.tsx"], true],
+    ["empty scope fails closed", [], true],
+  ]) {
+    if (requiresProjectVerification(paths) !== expected) {
+      failures.push(`verification classifier misclassified ${name}`);
+    } else {
+      console.log(`PASS verification classifier: ${name}`);
+    }
+  }
+
+  for (const workflow of ["ai-implement.yml", "ai-repair.yml"]) {
+    const source = readFileSync(
+      resolve(root, ".github/workflows", workflow),
+      "utf8"
+    );
+    const verificationRequirements = [
+      "git add -N --all",
+      "node .agents/scripts/classify-verification.mjs",
+      'echo "project_verification=$project_verification"',
+      "if: steps.apply.outputs.project_verification == 'true'",
+      "PROJECT_VERIFICATION: ${{ steps.apply.outputs.project_verification }}",
+      'if [ "$PROJECT_VERIFICATION" != "true" ]',
+      'echo "passed=true" >> "$GITHUB_OUTPUT"',
+    ];
+    const missing = verificationRequirements.filter(
+      (value) => !source.includes(value)
+    );
+    if (missing.length > 0) {
+      failures.push(
+        `${workflow}: incomplete path-aware verification; missing ${missing.join(", ")}`
+      );
+    } else {
+      console.log(`PASS path-aware verification: ${workflow}`);
     }
   }
 
