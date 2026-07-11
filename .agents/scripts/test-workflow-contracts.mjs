@@ -69,6 +69,24 @@ try {
     resolve(root, ".github/workflows/ai-issue-triage.yml"),
     "utf8"
   );
+  function workflowStep(source, name) {
+    const marker = `      - name: ${name}`;
+    const start = source.indexOf(marker);
+    if (start === -1) return "";
+    const nextStep = source.indexOf("\n      - name:", start + marker.length);
+    return source.slice(start, nextStep === -1 ? source.length : nextStep);
+  }
+
+  const revalidateStep = workflowStep(triageWorkflow, "Re-validate fixed issue");
+  const admissionStep = workflowStep(triageWorkflow, "Process maintainer admission");
+  const admissionRiskRequirements = [
+    "const validation = JSON.parse(fs.readFileSync('result.json', 'utf8'))[0];",
+    "const declaredRisk = validation.risk;",
+    "if (declaredRisk === 'risk:high')",
+  ];
+  const missingAdmissionRiskRequirements = admissionRiskRequirements.filter(
+    (value) => !admissionStep.includes(value)
+  );
   const triageRequirements = [
     "group: ai-issue-triage-${{ github.event.issue.number }}",
     "cancel-in-progress: false",
@@ -76,8 +94,6 @@ try {
     "Issue is no longer in a validation phase. Ignoring stale delivery.",
     "Issue is no longer awaiting information. Ignoring stale delivery.",
     "const risk = validation.risk;",
-    "const declaredRisk = validation.risk;",
-    "if (declaredRisk === 'risk:high')",
     "Risk label already synchronized to ${risk}.",
   ];
   const missingTriageRequirements = triageRequirements.filter(
@@ -92,11 +108,16 @@ try {
   ) || [];
   if (
     missingTriageRequirements.length > 0 ||
+    missingAdmissionRiskRequirements.length > 0 ||
+    revalidateStep.includes("declaredRisk") ||
     currentIssueReads.length < 5 ||
     labelRemovals.length !== tolerantRemovals.length
   ) {
     failures.push(
-      `ai-issue-triage.yml: missing concurrency/idempotency safeguards; missing ${missingTriageRequirements.join(", ") || "none"}`
+      `ai-issue-triage.yml: missing concurrency/idempotency safeguards; missing ${[
+        ...missingTriageRequirements,
+        ...missingAdmissionRiskRequirements,
+      ].join(", ") || "none"}; admission risk leaked into re-validation: ${revalidateStep.includes("declaredRisk")}`
     );
   } else {
     console.log("PASS triage concurrency and idempotency safeguards");

@@ -257,12 +257,6 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const fs = require('node:fs');
-            const validation = JSON.parse(fs.readFileSync('result.json', 'utf8'))[0];
-            const declaredRisk = validation.risk;
-            if (!['risk:low', 'risk:medium', 'risk:high'].includes(declaredRisk)) {
-              throw new Error('Validator did not return a supported risk classification.');
-            }
             const { data: issue } = await github.rest.issues.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -319,6 +313,12 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
+            const fs = require('node:fs');
+            const validation = JSON.parse(fs.readFileSync('result.json', 'utf8'))[0];
+            const declaredRisk = validation.risk;
+            if (!['risk:low', 'risk:medium', 'risk:high'].includes(declaredRisk)) {
+              throw new Error('Validator did not return a supported risk classification.');
+            }
             const { data: issue } = await github.rest.issues.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
