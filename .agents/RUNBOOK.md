@@ -29,8 +29,9 @@ Issue opened (agent_task form)
 1. Check Actions tab → `AI Implement` workflow run for errors
 2. If `preflight` failed: fix the issue (missing admission, duplicate branch), remove `ai:implementing`, re-add `ai:approved`
 3. If `generate` failed: check the configured implementation provider credential or API availability
-4. If `policy-check` failed: scope guard rejected the patch — review the generated changes manually
-5. If `publish` failed: check GitHub App token permissions
+4. If `verify` failed: confirm whether the changed paths require project verification; documentation-only changes should record project checks as skipped
+5. If `policy-check` failed: scope guard rejected the patch — review the generated changes manually
+6. If `publish` failed: check GitHub App token permissions
 
 #### Task stuck in `ai:reviewing`
 

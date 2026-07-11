@@ -272,22 +272,48 @@ jobs:
           path: /tmp/approved-context
 
       - name: Apply candidate patch
+        id: apply
         run: |
           test -s /tmp/generation/patch.diff
           git apply --check /tmp/generation/patch.diff
           git apply /tmp/generation/patch.diff
+          git add -N --all
           git diff --check
+          project_verification=$(git diff --no-renames --name-only --diff-filter=ACMRD -z | \
+            node .agents/scripts/classify-verification.mjs)
+          echo "project_verification=$project_verification" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
+        if: steps.apply.outputs.project_verification == 'true'
         run: npm ci
 
       - name: Run all required verification
         id: verify
         shell: bash
+        env:
+          PROJECT_VERIFICATION: ${{ steps.apply.outputs.project_verification }}
         run: |
+          mkdir -p /tmp/verification
+          if [ "$PROJECT_VERIFICATION" != "true" ]; then
+            node --input-type=module -e '
+              import { writeFileSync } from "node:fs";
+              const results = {
+                tests: "skipped",
+                lint: "skipped",
+                format: "skipped",
+                reason: "documentation-only change; git diff --check and scope guard are authoritative",
+              };
+              writeFileSync("/tmp/verification/results.json", JSON.stringify(results, null, 2));
+              for (const name of ["tests", "lint", "format"]) {
+                writeFileSync("/tmp/verification/" + name + ".log", results.reason + "\n");
+              }
+            '
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           set +e
           set -o pipefail
-          mkdir -p /tmp/verification
           npm test 2>&1 | tee /tmp/verification/tests.log
           tests=$?
           npm run lint 2>&1 | tee /tmp/verification/lint.log

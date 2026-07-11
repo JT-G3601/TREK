@@ -240,15 +240,31 @@ jobs:
         with:
           name: repair-output-${{ needs.authorize.outputs.issue_number }}-${{ needs.authorize.outputs.head_sha }}
           path: /tmp/repair
-      - run: |
+      - name: Apply repair patch
+        id: apply
+        run: |
           git apply --check /tmp/repair/patch.diff
           git apply /tmp/repair/patch.diff
+          git add -N --all
           git diff --check
-          npm ci
+          project_verification=$(git diff --no-renames --name-only --diff-filter=ACMRD -z | \
+            node .agents/scripts/classify-verification.mjs)
+          echo "project_verification=$project_verification" >> "$GITHUB_OUTPUT"
+      - name: Install dependencies
+        if: steps.apply.outputs.project_verification == 'true'
+        run: npm ci
       - name: Run verification
         id: verify
         shell: bash
+        env:
+          PROJECT_VERIFICATION: ${{ steps.apply.outputs.project_verification }}
         run: |
+          if [ "$PROJECT_VERIFICATION" != "true" ]; then
+            echo "Documentation-only repair; project tests, lint, and format are not applicable."
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           set +e
           set -o pipefail
           npm test

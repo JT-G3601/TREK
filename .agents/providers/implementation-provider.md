@@ -83,7 +83,7 @@ job must fail when the patch is empty or the provider changes `HEAD`.
 | Network ingress to repository | None |
 | Filesystem write scope | Claude Code `Edit` and `Write` tools in the checkout; deterministic scope guard enforces Approved Paths |
 | Git operations | Disallowed (no write credential available) |
-| Generated code execution | Project tests and generated application code are forbidden in generation and publisher jobs; authoritative execution occurs only in the credential-free verification job |
+| Generated code execution | Project tests and generated application code are forbidden in generation and publisher jobs; applicable project checks run only in the credential-free verification job, while documentation-only changes record them as skipped |
 | Timeout | 15 minutes at the generation-job boundary |
 | Retry | No implicit provider retry; a maintainer may rerun a failed job after determining it is transient |
 
