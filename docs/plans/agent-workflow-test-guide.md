@@ -232,7 +232,7 @@ Settings → Secrets and variables → Actions → New repository secret
 | `AGENT_APP_ID` | 创建短期 GitHub App token |
 | `AGENT_APP_PRIVATE_KEY` | App private key 完整 PEM 内容 |
 | `OPENAI_API_KEY` | Codex implementation/repair provider |
-| `ANTHROPIC_API_KEY` | Claude planning/review provider |
+| `DEEPSEEK_API_KEY` | DeepSeek backend for Claude Code planning/review |
 
 不要把 Secret 值写入 Issue、日志、policy、handoff 或 workflow 文件。
 

@@ -42,6 +42,28 @@ try {
     }
   }
 
+  for (const workflow of ["ai-plan.yml", "ai-review.yml"]) {
+    const source = readFileSync(
+      resolve(root, ".github/workflows", workflow),
+      "utf8"
+    );
+    const requiredProviderConfiguration = [
+      "secrets.DEEPSEEK_API_KEY",
+      "ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic",
+      "--model deepseek-v4-pro",
+    ];
+    const missing = requiredProviderConfiguration.filter(
+      (value) => !source.includes(value)
+    );
+    if (missing.length > 0 || source.includes("secrets.ANTHROPIC_API_KEY")) {
+      failures.push(
+        `${workflow}: invalid DeepSeek provider configuration; missing ${missing.join(", ") || "none"}`
+      );
+    } else {
+      console.log(`PASS DeepSeek provider: ${workflow}`);
+    }
+  }
+
   run(
     "valid issue",
     ".agents/scripts/validate-issue.mjs",

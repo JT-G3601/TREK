@@ -18,6 +18,24 @@
     "implementation_provider": "codex",
     "ci_trigger_mode": "github-app"
   },
+  "model_providers": {
+    "planning": {
+      "runtime": "claude-code-action",
+      "platform": "deepseek",
+      "api_protocol": "anthropic-compatible",
+      "endpoint": "https://api.deepseek.com/anthropic",
+      "model": "deepseek-v4-pro",
+      "secret_name": "DEEPSEEK_API_KEY"
+    },
+    "review": {
+      "runtime": "claude-code-action",
+      "platform": "deepseek",
+      "api_protocol": "anthropic-compatible",
+      "endpoint": "https://api.deepseek.com/anthropic",
+      "model": "deepseek-v4-pro",
+      "secret_name": "DEEPSEEK_API_KEY"
+    }
+  },
   "branch_lifecycle": {
     "plan_branches": "retain"
   },

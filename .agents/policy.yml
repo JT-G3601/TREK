@@ -33,6 +33,25 @@ execution:
   implementation_provider: codex
   ci_trigger_mode: github-app
 
+# Planning and review run through Claude Code with DeepSeek's reviewed
+# Anthropic-compatible endpoint. Workflows currently enforce these values;
+# provider-neutral routing is a Post-MVP backlog item.
+model_providers:
+  planning:
+    runtime: claude-code-action
+    platform: deepseek
+    api_protocol: anthropic-compatible
+    endpoint: "https://api.deepseek.com/anthropic"
+    model: deepseek-v4-pro
+    secret_name: DEEPSEEK_API_KEY
+  review:
+    runtime: claude-code-action
+    platform: deepseek
+    api_protocol: anthropic-compatible
+    endpoint: "https://api.deepseek.com/anthropic"
+    model: deepseek-v4-pro
+    secret_name: DEEPSEEK_API_KEY
+
 # === Plan Branch Lifecycle ===
 # Confirmed: 2026-07-11
 # Plan branches (ai-plan/<issue>-<slug>) are retained after merge for audit.

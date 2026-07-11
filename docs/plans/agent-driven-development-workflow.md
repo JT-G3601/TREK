@@ -794,11 +794,11 @@ Grant additional permissions only to a small deterministic job that requires the
 
 | Job class | Repository token | Model secret | Executes generated code | May mutate GitHub |
 |---|---|---|---|---|
-| Explore / plan | `contents: read` | Claude credential | No application code | No |
+| Explore / plan | `contents: read` | planning-provider credential | No application code | No |
 | Generate / repair | `contents: read` | implementation-provider credential | Agent process only | No |
 | Verify tests | `contents: read` | None | Yes, in an isolated runner | No |
 | Policy check | `contents: read` | None | No | No |
-| Review model | `contents: read`, checks read | Claude credential | No | No; findings pass to controller |
+| Review model | `contents: read`, checks read | review-provider credential | No | No; findings pass to controller |
 | Publisher / state controller | Short-lived scoped write token | None | No | Only defined state and PR operations |
 
 Additional requirements:
@@ -1093,6 +1093,51 @@ TREK-specific components that should remain local:
 - test selection;
 - Docker and Helm release behavior;
 - production credentials and environments.
+
+### 23.1 Post-MVP Backlog: Provider-Neutral Model Routing
+
+The initial workflow pins Claude Code with DeepSeek's Anthropic-compatible API
+for planning and review, and Codex with OpenAI credentials for implementation
+and repair. A
+follow-up optimization should make the model platform replaceable per role
+without changing the issue state machine, approval binding, handoff schema, or
+verification and publication boundaries.
+
+The provider abstraction should:
+
+- map `planning`, `review`, `implementation`, and `repair` roles to named provider
+  adapters in protected repository configuration;
+- define each adapter's pinned runner/action, API protocol, endpoint, model,
+  capability requirements, Secret name, arguments, and structured output schema;
+- support direct providers and compatible gateways, beginning with Anthropic,
+  DeepSeek's Anthropic-compatible endpoint, and OpenAI Codex;
+- keep credentials scoped to the corresponding model job and refer to Secrets by
+  name only; provider configuration must never contain Secret values;
+- keep deterministic controllers provider-neutral by accepting the same validated
+  plan, patch, and review-finding contracts from every adapter;
+- reject unsupported tool, structured-output, context, or authentication
+  capabilities before invoking a provider;
+- allow provider selection only through reviewed control-plane changes, never from
+  Issue text, labels, prompts, or other untrusted runtime input;
+- restrict custom endpoints to a reviewed allowlist and preserve the existing
+  no-write-credential and fail-closed security boundaries.
+
+Acceptance criteria for this optimization:
+
+1. A maintainer can switch planning/review between DeepSeek and another reviewed
+   provider by changing protected provider configuration and Secret setup,
+   without editing the state-machine workflows.
+2. Contract tests cover missing Secrets, unsupported capabilities, invalid model
+   names, disallowed endpoints, malformed provider output, and one successful
+   fixture for each supported adapter.
+3. Handoff, approval digest, scope guard, authoritative verification, and App-owned
+   publishing behavior remain identical across providers.
+4. Runbook and setup documentation describe provider-specific billing,
+   credentials, model selection, compatibility limitations, and rollback.
+
+This work should begin only after the first live dry run establishes a stable
+baseline for the pinned MVP providers. It should be implemented as a separate
+human-reviewed control-plane plan and PR.
 
 ## 24. Definition of Done
 

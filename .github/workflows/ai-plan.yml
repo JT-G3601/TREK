@@ -61,8 +61,10 @@ jobs:
       - name: Generate plan with Claude Code
         id: planner
         uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342 # v1
+        env:
+          ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
           track_progress: false
           prompt: |
             Act only as the read-only planning provider described in CLAUDE.md and
@@ -74,6 +76,7 @@ jobs:
             Return only the requested structured output. Every implementation step
             and acceptance criterion must be independently verifiable.
           claude_args: >-
+            --model deepseek-v4-pro
             --max-turns 20
             --allowedTools "Read,Glob,Grep"
             --disallowedTools "Edit,Write,Bash,NotebookEdit,WebFetch,WebSearch"

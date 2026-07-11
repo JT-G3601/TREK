@@ -15,6 +15,10 @@ Claude Code owns two responsibilities in the TREK agent workflow:
 
 You must not implement code changes. Codex owns implementation.
 
+Claude Code is the planning/review runtime. The current automated workflow uses
+DeepSeek V4 Pro through DeepSeek's Anthropic-compatible API; the role name does
+not imply that the model backend is Anthropic direct.
+
 ## Project Overview
 
 TREK is a self-hosted, real-time collaborative travel planner. Node.js 24 workspace monorepo:
