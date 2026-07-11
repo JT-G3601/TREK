@@ -525,6 +525,7 @@ Verify Admission and Plan Approval
 - [ ] 纯 `docs/**` / `wiki/**` / 根目录文档变更将 npm tests、lint、format 明确记录为 `skipped`，并记录跳过原因
 - [ ] 涉及应用、依赖或未知路径时仍执行 `npm test`、`npm run lint`、`npm run format:check`，且必须真实成功
 - [ ] 无论是否执行项目级验证，`git diff --check` 都成功
+- [ ] Scope Guard 的 changed-files 列表包含本次新增的未跟踪文件
 - [ ] Scope Guard 成功
 - [ ] Verification 或 Scope Guard 成功前没有 Push branch
 

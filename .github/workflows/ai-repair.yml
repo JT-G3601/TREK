@@ -310,6 +310,7 @@ jobs:
         run: |
           git apply --check /tmp/repair/patch.diff
           git apply /tmp/repair/patch.diff
+          git add -N --all
           git diff --check
           git diff --no-renames --name-only --diff-filter=ACMRD -z | \
             node --input-type=module -e '
