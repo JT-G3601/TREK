@@ -177,6 +177,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
           github_token: ${{ github.token }}
+          allowed_bots: "godot-agent-bot[bot]"
           track_progress: false
           prompt: |
             Act only as the independent review provider described in CLAUDE.md,
