@@ -584,6 +584,8 @@ Applicable CI success
 - [ ] 当前 head 存在 App-owned `AI Independent Review` Check
 - [ ] 无 blocking finding 时该 Check 为 `success`；CI、freshness 或 provider 失败时为 `failure`
 - [ ] 向 PR push 新 commit 后，新 head 重新出现 pending Check，旧 head 的成功不能放行
+- [ ] 普通非 Agent PR 获得同名 App-owned `success / not applicable` Check，不触发 Claude Review
+- [ ] applicability workflow 只 checkout base `dev`，不读取或执行 PR head 内容
 
 ### 9.9 人工 Merge
 

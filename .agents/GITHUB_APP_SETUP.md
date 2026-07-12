@@ -102,6 +102,13 @@ Verify with a test Agent PR: the check starts pending, becomes successful only
 after applicable CI and independent review pass, and a new push creates a fresh
 pending check for the new head.
 
+The same required check also appears on ordinary PRs targeting `dev`, where the
+App completes it immediately with `success` and a `not applicable` explanation.
+This prevents a repository-wide required check from blocking non-Agent work.
+The applicability controller uses `pull_request_target` only to access App
+credentials for fork PRs: it checks out the trusted `dev` branch and never reads
+or executes PR-head content.
+
 ## Fallback: GITHUB_TOKEN Mode
 
 The current workflows intentionally do not enable this fallback. To add it later,

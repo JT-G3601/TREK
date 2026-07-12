@@ -131,6 +131,7 @@ Then perform one low-risk dry run and confirm all of the following from GitHub:
 8. A changed PR head creates a new pending review check and invalidates earlier findings.
 9. Merge immediately produces `ai:done`, a completion comment, and implementation-branch cleanup; State Sync is the fallback.
 10. The `ai-plan/*` branch remains retained for audit according to policy.
+11. A non-Agent PR targeting `dev` receives an App-owned successful `not applicable` result instead of entering the Agent review path.
 
 ### Audit records
 

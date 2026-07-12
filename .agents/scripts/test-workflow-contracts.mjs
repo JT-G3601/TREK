@@ -206,10 +206,15 @@ try {
     "utf8"
   );
   const requiredReviewInitializer = [
+    "pull_request_target:",
     "types: [opened, synchronize, reopened]",
+    "ref: dev",
     "policy.review?.required_check_name",
     "github.rest.checks.create",
-    "status: 'in_progress'",
+    "const isAgentPr =",
+    "status: isAgentPr ? 'in_progress' : 'completed'",
+    "conclusion: 'success'",
+    "Independent Agent review is not applicable",
     "check.app?.slug !== expectedApp",
   ];
   const missingReviewInitializer = requiredReviewInitializer.filter(
@@ -221,6 +226,16 @@ try {
     );
   } else {
     console.log("PASS App-owned independent review initializer");
+  }
+  if (
+    reviewCheckWorkflow.includes("ref: ${{ github.event.pull_request.head.sha }}") ||
+    reviewCheckWorkflow.includes("ref: ${{ github.event.pull_request.head.ref }}")
+  ) {
+    failures.push(
+      "ai-review-check.yml: pull_request_target controller must never checkout PR head content"
+    );
+  } else {
+    console.log("PASS trusted-base-only pull_request_target controller");
   }
 
   const requiredReviewPublication = [

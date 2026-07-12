@@ -1,7 +1,9 @@
 name: AI Review Check
 
 on:
-  pull_request:
+  # This controller needs App credentials for fork PRs. It only checks out the
+  # trusted base branch and never reads or executes pull-request head content.
+  pull_request_target:
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -15,10 +17,7 @@ jobs:
   initialize:
     name: Initialize Independent Review Gate
     runs-on: ubuntu-latest
-    if: |
-      github.event.pull_request.base.ref == 'dev' &&
-      startsWith(github.event.pull_request.head.ref, 'ai/') &&
-      github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.base.ref == 'dev'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -31,7 +30,7 @@ jobs:
           app-id: ${{ secrets.AGENT_APP_ID }}
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
 
-      - name: Create pending App-owned review check
+      - name: Create App-owned review applicability check
         uses: actions/github-script@v7
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -43,10 +42,10 @@ jobs:
             const expectedAuthor = `${expectedApp}[bot]`;
             const checkName = policy.review?.required_check_name;
             if (!checkName) throw new Error('Review required check name is not configured.');
-            if (pr.user?.login !== expectedAuthor) {
-              core.info(`Ignoring PR authored by ${pr.user?.login || 'unknown'}.`);
-              return;
-            }
+            const isAgentPr =
+              pr.user?.login === expectedAuthor &&
+              pr.head.ref.startsWith('ai/') &&
+              pr.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}`;
 
             const { data } = await github.rest.checks.listForRef({
               owner: context.repo.owner, repo: context.repo.repo,
@@ -60,15 +59,26 @@ jobs:
               return;
             }
 
-            const { data: check } = await github.rest.checks.create({
+            const checkInput = {
               owner: context.repo.owner, repo: context.repo.repo,
               name: checkName, head_sha: pr.head.sha,
-              status: 'in_progress', started_at: new Date().toISOString(),
+              status: isAgentPr ? 'in_progress' : 'completed',
+              ...(isAgentPr ? {
+                started_at: new Date().toISOString(),
+              } : {
+                conclusion: 'success',
+                completed_at: new Date().toISOString(),
+              }),
               output: {
-                title: `Independent review pending for PR #${pr.number}`,
-                summary: `Waiting for authoritative CI and independent review of \`${pr.head.sha}\`.`,
+                title: isAgentPr
+                  ? `Independent review pending for PR #${pr.number}`
+                  : 'Independent Agent review is not applicable',
+                summary: isAgentPr
+                  ? `Waiting for authoritative CI and independent review of \`${pr.head.sha}\`.`
+                  : 'This is not an App-authored `ai/*` implementation PR. Normal repository review rules still apply.',
               },
-            });
+            };
+            const { data: check } = await github.rest.checks.create(checkInput);
             if (check.app?.slug !== expectedApp) {
               throw new Error(`Review check owner ${check.app?.slug || 'unknown'} does not match ${expectedApp}.`);
             }
