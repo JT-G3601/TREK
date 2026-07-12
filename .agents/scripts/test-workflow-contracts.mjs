@@ -111,15 +111,12 @@ try {
       );
     }
 
-    if (
-      workflow === "ai-review.yml" &&
-      !claudeStep.includes('allowed_bots: "godot-agent-bot[bot]"')
-    ) {
+    if (!claudeStep.includes('allowed_bots: "godot-agent-bot[bot]"')) {
       failures.push(
-        "ai-review.yml: independent review must allow the App bot that creates agent PRs"
+        `${workflow}: ${stepName} must allow the App bot that advances workflow state`
       );
-    } else if (workflow === "ai-review.yml") {
-      console.log("PASS independent review App bot allowlist: ai-review.yml");
+    } else {
+      console.log(`PASS workflow App bot allowlist: ${workflow}`);
     }
   }
 
@@ -330,6 +327,20 @@ try {
     resolve(root, ".github/workflows/ai-plan.yml"),
     "utf8"
   );
+  const planFailureJob = workflowJob(planWorkflow, "report-failure");
+  if (
+    !planFailureJob.includes("needs.plan.result == 'failure'") ||
+    !planFailureJob.includes("needs.publish.result == 'failure'") ||
+    !planFailureJob.includes("name: 'ai:planning'") ||
+    !planFailureJob.includes("labels: ['ai:blocked']") ||
+    !planFailureJob.includes("No plan revision was published")
+  ) {
+    failures.push(
+      "ai-plan.yml: planning failures must block the task without publishing a plan"
+    );
+  } else {
+    console.log("PASS planning failure state convergence");
+  }
   const publishJob = workflowJob(planWorkflow, "publish");
   const downloadCandidateStep = workflowStep(
     publishJob,
