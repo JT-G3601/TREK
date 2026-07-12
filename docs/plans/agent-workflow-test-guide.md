@@ -581,6 +581,9 @@ Applicable CI success
 - [ ] 没有伪造人类 Approval
 - [ ] 无 blocking finding 时进入 `ai:ready-for-human`
 - [ ] 有 blocking finding 时进入 `ai:changes-requested`
+- [ ] 当前 head 存在 App-owned `AI Independent Review` Check
+- [ ] 无 blocking finding 时该 Check 为 `success`；CI、freshness 或 provider 失败时为 `failure`
+- [ ] 向 PR push 新 commit 后，新 head 重新出现 pending Check，旧 head 的成功不能放行
 
 ### 9.9 人工 Merge
 
@@ -590,6 +593,7 @@ Applicable CI success
 - [ ] Branch 没有落后于最新 `dev`
 - [ ] CI 全部成功
 - [ ] Claude Review 对当前 head 有效
+- [ ] `AI Independent Review` 是 `dev` ruleset 的 required check，来源为 policy 中配置的 App
 - [ ] 人工检查文件内容正确
 - [ ] 没有超出 Approved Paths
 
@@ -597,16 +601,18 @@ Applicable CI success
 
 ### 9.10 验证最终状态
 
-手动运行：
+Merge 后 `AI Complete` 应立即运行，无需等待定时任务。预期：
+
+```text
+ai:ready-for-human → ai:done
+删除 ai/<issue-number>-<slug> 实现分支
+保留 ai-plan/<issue-number>-<slug> 审计分支
+```
+
+若事件工作流未收敛，再手动运行兜底：
 
 ```text
 Actions → AI State Sync → Run workflow → dev
-```
-
-预期 Issue 进入：
-
-```text
-ai:done
 ```
 
 检查 stable release workflow 没有运行。
@@ -671,9 +677,9 @@ Bind Repair Authorization
 | Implementation | workflow run URL、branch、commit |
 | Verification | tests/lint/format/scope 结果 |
 | Draft PR | URL、base、author、head SHA |
-| Review | reviewed SHA、findings、comment URL |
+| Review | reviewed SHA、App-owned Check URL、conclusion、findings comment URL |
 | Merge | human actor、merge commit、目标 `dev` |
-| Final state | `ai:done` 与 State Sync run URL |
+| Final state | `ai:done`、completion comment、AI Complete run URL；如使用兜底再记录 State Sync URL |
 
 ### 测试通过标准
 
@@ -686,6 +692,9 @@ Bind Repair Authorization
 - [ ] Verification job 没有模型 Secret
 - [ ] 失败门禁不会发布 branch/PR
 - [ ] Review 与准确 PR head SHA 绑定
+- [ ] `dev` required check 阻止 pending/failed independent review 合并
+- [ ] Merge 后自动进入 `ai:done` 并删除 implementation branch
+- [ ] `ai-plan/*` branch 仍按 policy 保留
 - [ ] PR 只进入本仓库 `dev`
 - [ ] 没有联系、修改或向 `mauriceboe/TREK` 提交内容
 - [ ] 没有触发 `main` release workflow

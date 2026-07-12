@@ -1,0 +1,74 @@
+name: AI Review Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-review-check-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: false
+
+jobs:
+  initialize:
+    name: Initialize Independent Review Gate
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.base.ref == 'dev' &&
+      startsWith(github.event.pull_request.head.ref, 'ai/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          persist-credentials: false
+
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+
+      - name: Create pending App-owned review check
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+            const policy = JSON.parse(fs.readFileSync('.agents/policy.json', 'utf8'));
+            const pr = context.payload.pull_request;
+            const expectedApp = policy.approval.expected_app_slug;
+            const expectedAuthor = `${expectedApp}[bot]`;
+            const checkName = policy.review?.required_check_name;
+            if (!checkName) throw new Error('Review required check name is not configured.');
+            if (pr.user?.login !== expectedAuthor) {
+              core.info(`Ignoring PR authored by ${pr.user?.login || 'unknown'}.`);
+              return;
+            }
+
+            const { data } = await github.rest.checks.listForRef({
+              owner: context.repo.owner, repo: context.repo.repo,
+              ref: pr.head.sha, check_name: checkName, filter: 'latest', per_page: 20,
+            });
+            const existing = data.check_runs.find(check =>
+              check.name === checkName && check.app?.slug === expectedApp
+            );
+            if (existing) {
+              core.info(`Review check already exists for ${pr.head.sha}: ${existing.html_url}`);
+              return;
+            }
+
+            const { data: check } = await github.rest.checks.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              name: checkName, head_sha: pr.head.sha,
+              status: 'in_progress', started_at: new Date().toISOString(),
+              output: {
+                title: `Independent review pending for PR #${pr.number}`,
+                summary: `Waiting for authoritative CI and independent review of \`${pr.head.sha}\`.`,
+              },
+            });
+            if (check.app?.slug !== expectedApp) {
+              throw new Error(`Review check owner ${check.app?.slug || 'unknown'} does not match ${expectedApp}.`);
+            }

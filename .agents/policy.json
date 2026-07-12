@@ -55,6 +55,9 @@
   "branch_lifecycle": {
     "plan_branches": "retain"
   },
+  "review": {
+    "required_check_name": "AI Independent Review"
+  },
   "limits": {
     "max_changed_files": 20,
     "max_changed_lines": 1200,

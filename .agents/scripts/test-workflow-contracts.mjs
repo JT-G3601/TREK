@@ -182,6 +182,97 @@ try {
     }
   }
 
+  const reviewCheckName = "AI Independent Review";
+  if (providerPolicy.review?.required_check_name !== reviewCheckName) {
+    failures.push("policy.json: independent review required check is not configured");
+  } else {
+    console.log("PASS independent review check policy");
+  }
+
+  const reviewCheckWorkflow = readFileSync(
+    resolve(root, ".github/workflows/ai-review-check.yml"),
+    "utf8"
+  );
+  const independentReviewWorkflow = readFileSync(
+    resolve(root, ".github/workflows/ai-review.yml"),
+    "utf8"
+  );
+  const completionWorkflow = readFileSync(
+    resolve(root, ".github/workflows/ai-complete.yml"),
+    "utf8"
+  );
+  const stateSyncWorkflow = readFileSync(
+    resolve(root, ".github/workflows/ai-state-sync.yml"),
+    "utf8"
+  );
+  const requiredReviewInitializer = [
+    "types: [opened, synchronize, reopened]",
+    "policy.review?.required_check_name",
+    "github.rest.checks.create",
+    "status: 'in_progress'",
+    "check.app?.slug !== expectedApp",
+  ];
+  const missingReviewInitializer = requiredReviewInitializer.filter(
+    (value) => !reviewCheckWorkflow.includes(value)
+  );
+  if (missingReviewInitializer.length > 0) {
+    failures.push(
+      `ai-review-check.yml: incomplete App-owned review initializer; missing ${missingReviewInitializer.join(", ")}`
+    );
+  } else {
+    console.log("PASS App-owned independent review initializer");
+  }
+
+  const requiredReviewPublication = [
+    "github.rest.checks.update",
+    "conclusion: blocking.length > 0 ? 'failure' : 'success'",
+    "title: 'Independent review provider failed'",
+    "title: 'Independent review blocked by CI or stale base'",
+    "candidate.app?.slug === policy.approval.expected_app_slug",
+  ];
+  const missingReviewPublication = requiredReviewPublication.filter(
+    (value) => !independentReviewWorkflow.includes(value)
+  );
+  if (missingReviewPublication.length > 0) {
+    failures.push(
+      `ai-review.yml: incomplete required review conclusions; missing ${missingReviewPublication.join(", ")}`
+    );
+  } else {
+    console.log("PASS App-owned independent review conclusions");
+  }
+
+  const requiredCompletionGate = [
+    "pull_request:\n    types: [closed]",
+    "labels.includes('ai:ready-for-human')",
+    "check.conclusion === 'success'",
+    "check.app?.slug === expectedApp",
+    "labels: ['ai:done']",
+    "ref: `heads/${pr.head.ref}`",
+    "retained `ai-plan/*` branch",
+  ];
+  const missingCompletionGate = requiredCompletionGate.filter(
+    (value) => !completionWorkflow.includes(value)
+  );
+  if (missingCompletionGate.length > 0) {
+    failures.push(
+      `ai-complete.yml: incomplete event-driven completion gate; missing ${missingCompletionGate.join(", ")}`
+    );
+  } else {
+    console.log("PASS event-driven completion and implementation cleanup");
+  }
+
+  if (
+    !stateSyncWorkflow.includes("check.conclusion === 'success'") ||
+    !stateSyncWorkflow.includes("ref: `heads/${pr.head.ref}`") ||
+    stateSyncWorkflow.includes("ref: `heads/ai-plan/")
+  ) {
+    failures.push(
+      "ai-state-sync.yml: reconciliation must enforce review and clean only implementation branches"
+    );
+  } else {
+    console.log("PASS state sync review-gated cleanup fallback");
+  }
+
   for (const [name, paths, expected] of [
     ["docs-only", ["docs/agent-workflow-smoke-test.md"], false],
     ["wiki-only", ["wiki/README.md"], false],
@@ -604,6 +695,11 @@ try {
   const finalizedHandoff = readFileSync(finalizedHandoffPath, "utf8");
   if (
     !finalizedHandoff.includes("- `.gitignore`") ||
+    !finalizedHandoff.includes(
+      "- Pull request: pending controller publication; authoritative PR evidence is recorded on GitHub"
+    ) ||
+    !finalizedHandoff.includes("Pending at this immutable pre-review snapshot.") ||
+    !finalizedHandoff.includes("App-owned `AI Independent Review` Check Run") ||
     !finalizedHandoff.includes(
       "| `npm test` | skipped | documentation-only change |"
     ) ||

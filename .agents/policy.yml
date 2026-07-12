@@ -72,6 +72,12 @@ model_providers:
 branch_lifecycle:
   plan_branches: retain
 
+# === Independent Review Merge Gate ===
+# Confirmed: 2026-07-12
+# Configure this exact App-owned check as required in the dev ruleset.
+review:
+  required_check_name: "AI Independent Review"
+
 # === Limits ===
 limits:
   max_changed_files: 20

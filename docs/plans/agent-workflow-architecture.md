@@ -17,7 +17,8 @@ flowchart TB
         FindingsPublisher["Findings Publisher<br/>校验 Reviewed SHA · 发布 Findings · 状态迁移"]
         RepairAuth["Repair Controller<br/>绑定 Review Comment · PR Head · Repair Round"]
         RepairPublisher["Repair Publisher<br/>应用已验证 Repair Patch · 更新 PR Branch"]
-        StateSync["State Sync<br/>异常检测 · Stale 警告 · Merge → ai:done"]
+        Complete["Completion Controller<br/>Review Check 校验 · ai:done · 实现分支清理"]
+        StateSync["State Sync<br/>异常检测 · Stale 警告 · 完成状态兜底"]
     end
 
     subgraph ModelZone["模型作业 — 无 Repository Write Token"]
@@ -38,6 +39,7 @@ flowchart TB
         ApprovalCheck["AI Plan Approval Check<br/>Plan SHA · Digest · Approver · App Slug"]
         DraftPR["ai/&lt;issue&gt;-&lt;slug&gt;<br/>Draft PR → dev<br/>Execution Handoff"]
         ExistingCI["TREK Existing CI<br/>Tests · Lint & Prettier · Required Checks"]
+        ReviewCheck["AI Independent Review<br/>App-owned Required Check · Exact Head SHA"]
         Ready["ai:ready-for-human"]
         Changes["ai:changes-requested"]
         Merged["Human-merged PR → dev"]
@@ -70,6 +72,7 @@ flowchart TB
     DraftPR --> ReviewGate
     ReviewGate -->|"CI Passed + Head/Freshness Valid"| ClaudeReview
     ClaudeReview -->|"Structured Findings Artifact"| FindingsPublisher
+    FindingsPublisher --> ReviewCheck
     FindingsPublisher -->|"无 Blocking Finding"| Ready
     FindingsPublisher -->|"存在 Blocking Finding"| Changes
 
@@ -84,8 +87,11 @@ flowchart TB
     Ready -->|"人工最终 Review 与 Merge"| Human
     Human -->|"Merge approved PR"| Merged
     DraftPR --> Merged
-    Merged --> StateSync
-    StateSync --> Done
+    Merged --> Complete
+    ReviewCheck --> Complete
+    Complete --> Done
+    Complete -->|"删除 ai/* 实现分支"| DraftPR
+    StateSync -.-> Complete
     StateSync -.-> Issue
     StateSync -.-> DraftPR
 
@@ -100,10 +106,10 @@ flowchart TB
     classDef release fill:#f8d7da,stroke:#a94442,color:#4d1918,stroke-width:2px;
 
     class Human human;
-    class Triage,PlanPublisher,Approval,ImplPreflight,ImplPublisher,ReviewGate,FindingsPublisher,RepairAuth,RepairPublisher,StateSync controller;
+    class Triage,PlanPublisher,Approval,ImplPreflight,ImplPublisher,ReviewGate,FindingsPublisher,RepairAuth,RepairPublisher,Complete,StateSync controller;
     class ClaudePlan,CodexImpl,ClaudeReview,CodexRepair model;
     class Verify,Scope,RepairVerify verify;
-    class Issue,PlanBranch,ApprovalCheck,DraftPR,ExistingCI,Ready,Changes,Merged,Done state;
+    class Issue,PlanBranch,ApprovalCheck,DraftPR,ExistingCI,ReviewCheck,Ready,Changes,Merged,Done state;
     class Main release;
 ```
 
@@ -124,3 +130,6 @@ flowchart TB
 4. Publisher 只消费已通过 verification 与 scope guard 的 Patch，不执行生成代码。
 5. Review findings 只对其记录的 PR head SHA 有效；Head 变化后必须重新 CI 和 Review。
 6. Agent 流程止于 `dev` 的 Draft PR；`main` 与生产发布始终属于人工边界。
+7. `dev` ruleset 必须要求由配置 App 创建的 `AI Independent Review` Check；Issue label 不是 Merge 门禁。
+8. Handoff 是 Review 前的不可变实现快照；最终 Review、Merge 与完成证据位于 App Check、PR 评论和 Issue 完成评论。
+9. Merge 后事件控制器立即收敛为 `ai:done` 并删除 `ai/*` 实现分支；`ai-plan/*` 按 policy 保留，State Sync 仅作兜底。

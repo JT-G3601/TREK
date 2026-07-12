@@ -25,6 +25,8 @@ try {
     "Approved plan SHA": facts.plan_sha,
     "Approved plan digest": facts.plan_digest,
     "Working branch": facts.branch,
+    "Pull request":
+      "pending controller publication; authoritative PR evidence is recorded on GitHub",
     "Phase at last handoff commit": "ai:reviewing",
     "Plan approved by": facts.approver,
     "Plan approved at": facts.approved_at,
@@ -66,8 +68,16 @@ try {
   );
   content = replaceSection(
     content,
+    "Review Findings",
+    [
+      "Pending at this immutable pre-review snapshot.",
+      "Authoritative findings are published as the App-owned `AI Independent Review` Check Run and matching PR comment bound to the reviewed head SHA.",
+    ].join("\n\n")
+  );
+  content = replaceSection(
+    content,
     "Next Steps",
-    "Existing CI runs on the Draft PR, followed by independent Claude review and human final review."
+    "The controller publishes the Draft PR. Existing CI and independent Claude review then run against its exact head SHA before human final review and merge."
   );
 
   if (computePlanDigest(content) !== originalDigest) {
