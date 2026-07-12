@@ -333,3 +333,48 @@ jobs:
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: Number(process.env.ISSUE_NUMBER), labels: ['ai:changes-requested'],
             });
+
+  report-review-failure:
+    name: Report Independent Review Failure
+    runs-on: ubuntu-latest
+    needs: [gate, review]
+    if: |
+      always() &&
+      needs.gate.outputs.proceed == 'true' &&
+      needs.review.result == 'failure'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+
+      - name: Block task without publishing findings
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+          ISSUE_NUMBER: ${{ needs.gate.outputs.issue_number }}
+          HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const prNumber = Number(process.env.PR_NUMBER);
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: prNumber,
+              body: [
+                `Independent review failed for \`${process.env.HEAD_SHA}\`.`,
+                'No findings were published. Do not merge until the review provider succeeds.',
+              ].join('\n'),
+            });
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: issueNumber, name: 'ai:reviewing',
+            }).catch(error => { if (error.status !== 404) throw error; });
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: issueNumber, labels: ['ai:blocked'],
+            });

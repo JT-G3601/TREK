@@ -280,6 +280,51 @@ try {
       "PASS approved context download: ai-implement.yml publish job"
     );
   }
+  const downloadVerificationStep = workflowStep(
+    implementPublishJob,
+    "Download verification evidence"
+  );
+  const createImplementationStep = workflowStep(
+    implementPublishJob,
+    "Create implementation commit and push branch"
+  );
+  if (
+    !downloadVerificationStep.includes(
+      "name: verification-results-${{ needs.preflight.outputs.issue_number }}"
+    ) ||
+    !downloadVerificationStep.includes("path: /tmp/verification") ||
+    !createImplementationStep.includes("git add -N --all") ||
+    !createImplementationStep.includes(
+      'readFileSync("/tmp/verification/results.json", "utf8")'
+    )
+  ) {
+    failures.push(
+      "ai-implement.yml: publish job must preserve new-file and verification evidence"
+    );
+  } else {
+    console.log("PASS implementation audit evidence: ai-implement.yml");
+  }
+
+  const reviewWorkflow = readFileSync(
+    resolve(root, ".github/workflows/ai-review.yml"),
+    "utf8"
+  );
+  const reviewFailureJob = workflowJob(
+    reviewWorkflow,
+    "report-review-failure"
+  );
+  if (
+    !reviewFailureJob.includes("needs.review.result == 'failure'") ||
+    !reviewFailureJob.includes("name: 'ai:reviewing'") ||
+    !reviewFailureJob.includes("labels: ['ai:blocked']") ||
+    !reviewFailureJob.includes("No findings were published")
+  ) {
+    failures.push(
+      "ai-review.yml: provider failures must block the task without publishing findings"
+    );
+  } else {
+    console.log("PASS independent review failure state convergence");
+  }
 
   const planWorkflow = readFileSync(
     resolve(root, ".github/workflows/ai-plan.yml"),
@@ -515,6 +560,12 @@ try {
       approved_at: validApproval.timestamp,
       branch: "ai/walkthrough-2-handoff-gitignore",
       changed_files: [".gitignore"],
+      verification: {
+        tests: "skipped",
+        lint: "skipped",
+        format: "skipped",
+        reason: "documentation-only change",
+      },
     })
   );
   run(
@@ -539,6 +590,22 @@ try {
     [finalizedHandoffPath, join(fixtures, "approval-valid.json")],
     0
   );
+  const finalizedHandoff = readFileSync(finalizedHandoffPath, "utf8");
+  if (
+    !finalizedHandoff.includes("- `.gitignore`") ||
+    !finalizedHandoff.includes(
+      "| `npm test` | skipped | documentation-only change |"
+    ) ||
+    finalizedHandoff.includes(
+      "| `npm test` | passed | Authoritative credential-free verification job |"
+    )
+  ) {
+    failures.push(
+      "finalized handoff must record actual changed files and verification outcomes"
+    );
+  } else {
+    console.log("PASS finalized handoff audit evidence");
+  }
 
   run(
     "normal scope",

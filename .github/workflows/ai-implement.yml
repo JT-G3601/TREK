@@ -456,6 +456,12 @@ jobs:
           name: approved-context-${{ needs.preflight.outputs.issue_number }}
           path: /tmp/approved-context
 
+      - name: Download verification evidence
+        uses: actions/download-artifact@v5
+        with:
+          name: verification-results-${{ needs.preflight.outputs.issue_number }}
+          path: /tmp/verification
+
       - name: Ensure dev has not advanced
         env:
           EXPECTED_BASE: ${{ needs.preflight.outputs.base_sha }}
@@ -480,6 +486,7 @@ jobs:
           git checkout -b "$branch"
           git apply --check /tmp/generation/patch.diff
           git apply /tmp/generation/patch.diff
+          git add -N --all
           git diff --check
           BRANCH="$branch" node --input-type=module -e '
             import { execFileSync } from "node:child_process";
@@ -488,6 +495,7 @@ jobs:
               "diff", "--no-renames", "--name-only", "--diff-filter=ACMRD", "-z",
             ]).toString().split("\0").filter(Boolean);
             const approval = JSON.parse(readFileSync("/tmp/approved-context/approval.json", "utf8"));
+            const verification = JSON.parse(readFileSync("/tmp/verification/results.json", "utf8"));
             writeFileSync("/tmp/implementation-facts.json", JSON.stringify({
               issue_number: Number(process.env.ISSUE_NUMBER),
               plan_sha: process.env.PLAN_SHA,
@@ -496,6 +504,7 @@ jobs:
               approved_at: approval.timestamp,
               branch: process.env.BRANCH,
               changed_files: changedFiles,
+              verification,
             }, null, 2));
           '
           mkdir -p .agents/handoff
