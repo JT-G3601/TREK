@@ -84,6 +84,24 @@ After configuration, publisher and state-controller jobs generate short-lived Ap
     private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
 ```
 
+## Step 7: Require Independent Review on `dev`
+
+After the workflows have been merged to `dev`, open the repository ruleset that
+targets `dev` and add this exact required status check:
+
+```text
+AI Independent Review
+```
+
+Select the configured Agent GitHub App as the expected source when GitHub offers
+source selection. Do not use the `AI Review` workflow job name: the required
+record is the App-owned Check Run created for each exact PR head SHA. Keep the
+App outside any ruleset bypass list so a failed or pending review cannot merge.
+
+Verify with a test Agent PR: the check starts pending, becomes successful only
+after applicable CI and independent review pass, and a new push creates a fresh
+pending check for the new head.
+
 ## Fallback: GITHUB_TOKEN Mode
 
 The current workflows intentionally do not enable this fallback. To add it later,

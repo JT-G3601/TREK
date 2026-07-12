@@ -105,7 +105,7 @@ jobs:
               "- Approved plan SHA:",
               "- Approved plan digest:",
               "- Working branch:",
-              "- Pull request:",
+              "- Pull request: pending controller publication",
               "- Phase at last handoff commit: ai:plan-ready",
               "- Risk level: " + plan.risk_level,
               "- Plan approved by:",

@@ -1,0 +1,132 @@
+name: AI Complete
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  complete:
+    name: Complete Merged Agent Task
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'dev' &&
+      startsWith(github.event.pull_request.head.ref, 'ai/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          persist-credentials: false
+
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+
+      - name: Verify review gate, finish task, and clean implementation branch
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+            const policy = JSON.parse(fs.readFileSync('.agents/policy.json', 'utf8'));
+            const pr = context.payload.pull_request;
+            const expectedApp = policy.approval.expected_app_slug;
+            const expectedAuthor = `${expectedApp}[bot]`;
+            const checkName = policy.review?.required_check_name;
+            if (pr.user?.login !== expectedAuthor) {
+              throw new Error(`Merged Agent PR author ${pr.user?.login || 'unknown'} is not ${expectedAuthor}.`);
+            }
+            const issueMatch = pr.body?.match(/(?:Closes|Fixes|Resolves)\s+#(\d+)/i);
+            if (!issueMatch) throw new Error('Merged Agent PR has no linked Issue.');
+            const issueNumber = Number(issueMatch[1]);
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
+            });
+            const labels = issue.labels.map(label =>
+              typeof label === 'string' ? label : label.name
+            );
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner: context.repo.owner, repo: context.repo.repo,
+              ref: pr.head.sha, check_name: checkName, filter: 'latest', per_page: 20,
+            });
+            const reviewCheck = checks.check_runs.find(check =>
+              check.name === checkName &&
+              check.app?.slug === expectedApp &&
+              check.status === 'completed' &&
+              check.conclusion === 'success'
+            );
+            if (!labels.includes('ai:ready-for-human') || !reviewCheck) {
+              for (const name of labels.filter(label => label.startsWith('ai:'))) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: issueNumber, name,
+                }).catch(error => { if (error.status !== 404) throw error; });
+              }
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issueNumber, labels: ['ai:blocked'],
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: [
+                  '## Agent Workflow — Merge Gate Violation', '',
+                  `PR #${pr.number} was merged without both \`ai:ready-for-human\` and a successful App-owned \`${checkName}\` check for \`${pr.head.sha}\`.`,
+                  'The task was marked `ai:blocked` for maintainer investigation.',
+                ].join('\n'),
+              });
+              core.setFailed('Merged Agent PR did not satisfy the independent review gate.');
+              return;
+            }
+
+            const phaseLabels = [
+              'ai:triage', 'ai:awaiting-admission', 'ai:planning', 'ai:plan-ready',
+              'ai:implementing', 'ai:reviewing', 'ai:changes-requested',
+              'ai:ready-for-human', 'ai:ci-awaiting-approval', 'ai:blocked',
+              'ai:needs-info', 'ai:forbidden',
+            ];
+            for (const name of phaseLabels.filter(name => labels.includes(name))) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issueNumber, name,
+              }).catch(error => { if (error.status !== 404) throw error; });
+            }
+            if (!labels.includes('ai:done')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issueNumber, labels: ['ai:done'],
+              });
+            }
+            const completionMarker = `<!-- agent-workflow-complete:${pr.number} -->`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: issueNumber, per_page: 100,
+            });
+            if (!comments.some(comment => comment.body?.includes(completionMarker))) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: [
+                  '## Agent Workflow — Complete', '',
+                  `- **Pull request**: #${pr.number}`,
+                  `- **Reviewed head**: \`${pr.head.sha}\``,
+                  `- **Merge commit**: \`${pr.merge_commit_sha}\``,
+                  `- **Review check**: [${checkName}](${reviewCheck.html_url})`, '',
+                  'The implementation branch was cleaned up. The retained `ai-plan/*` branch remains the immutable plan audit record.',
+                  '', completionMarker,
+                ].join('\n'),
+              });
+            }
+            await github.rest.git.deleteRef({
+              owner: context.repo.owner, repo: context.repo.repo,
+              ref: `heads/${pr.head.ref}`,
+            }).catch(error => {
+              if (![404, 422].includes(error.status)) throw error;
+              core.info(`Implementation branch already absent: ${pr.head.ref}`);
+            });

@@ -15,8 +15,9 @@ Issue opened (agent_task form)
   → ai:plan-ready → maintainer adds ai:approved
   → ai:implementing → implementation provider generates, scope guard checks, PR created
   → Draft PR → CI runs → ai:reviewing → Claude Code reviews
+  → App-owned AI Independent Review check succeeds
   → ai:ready-for-human → maintainer merges
-  → ai:done
+  → ai:done + implementation branch cleanup
 ```
 
 ### Recovery Procedures
@@ -50,6 +51,17 @@ Issue opened (agent_task form)
 1. State sync automatically comments after 7 days of inactivity
 2. Check if `dev` has advanced — PR may need rebase
 3. Merge or close the PR
+
+#### Merged task is not `ai:done`
+
+**Symptom**: an eligible Agent PR was merged but its Issue or implementation
+branch was not finalized.
+
+**Recovery**:
+1. Confirm the merged head has a successful App-owned `AI Independent Review` check
+2. Confirm the Issue had `ai:ready-for-human` at merge time
+3. Check Actions → `AI Complete`; a failed gate intentionally moves the Issue to `ai:blocked`
+4. Run `AI State Sync` manually to reconcile a valid task and retry implementation-branch cleanup
 
 #### Task in `ai:blocked`
 
@@ -115,7 +127,19 @@ Then perform one low-risk dry run and confirm all of the following from GitHub:
 4. Failed verification or scope checks create no implementation branch.
 5. The Draft PR is authored by the expected App and targets `dev`.
 6. Independent review starts only after all applicable CI succeeds for the same head SHA.
-7. A changed PR head invalidates unpublished review findings.
+7. `AI Independent Review` is owned by the configured App, required by the `dev` ruleset, and succeeds for the exact merge head.
+8. A changed PR head creates a new pending review check and invalidates earlier findings.
+9. Merge immediately produces `ai:done`, a completion comment, and implementation-branch cleanup; State Sync is the fallback.
+10. The `ai-plan/*` branch remains retained for audit according to policy.
+
+### Audit records
+
+The handoff committed with the implementation is an immutable pre-review
+snapshot. It records the approved plan, actual changed files, and verification
+evidence. Final review and merge facts are authoritative in the App-owned
+`AI Independent Review` Check Run, the matching PR review comment, and the Issue
+completion comment. The controller deletes only the implementation branch after
+merge; retained `ai-plan/*` branches are not cleanup anomalies.
 
 ### Provider failure behavior
 

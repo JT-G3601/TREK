@@ -231,6 +231,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          persist-credentials: false
+
       - uses: actions/create-github-app-token@v2
         id: app-token
         with:
@@ -253,6 +258,7 @@ jobs:
           script: |
             const fs = require('node:fs');
             const review = JSON.parse(fs.readFileSync('/tmp/review-output/findings.json', 'utf8'));
+            const policy = JSON.parse(fs.readFileSync('.agents/policy.json', 'utf8'));
             const prNumber = Number(process.env.PR_NUMBER);
             const issueNum = Number(process.env.ISSUE_NUMBER);
             const { data: pr } = await github.rest.pulls.get({
@@ -262,6 +268,17 @@ jobs:
               throw new Error('PR head changed after review; findings are stale and will not be published.');
             }
             const blocking = review.findings.filter(finding => finding.severity === 'blocking');
+            const checkName = policy.review?.required_check_name;
+            if (!checkName) throw new Error('Review required check name is not configured.');
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner: context.repo.owner, repo: context.repo.repo,
+              ref: pr.head.sha, check_name: checkName, filter: 'latest', per_page: 20,
+            });
+            const check = checks.check_runs.find(candidate =>
+              candidate.name === checkName &&
+              candidate.app?.slug === policy.approval.expected_app_slug
+            );
+            if (!check) throw new Error('App-owned independent review check is missing.');
             const body = [
               `## Independent Agent Review — ${review.findings.length} finding(s)`, '',
               review.review_summary, '',
@@ -278,6 +295,23 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: prNumber, body,
+            });
+            await github.rest.checks.update({
+              owner: context.repo.owner, repo: context.repo.repo,
+              check_run_id: check.id, status: 'completed',
+              conclusion: blocking.length > 0 ? 'failure' : 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: blocking.length > 0
+                  ? `Independent review found ${blocking.length} blocking issue(s)`
+                  : 'Independent review passed',
+                summary: [
+                  review.review_summary,
+                  '',
+                  `Reviewed commit: \`${pr.head.sha}\``,
+                  `Total findings: ${review.findings.length}; blocking: ${blocking.length}.`,
+                ].join('\n'),
+              },
             });
             await github.rest.issues.removeLabel({
               owner: context.repo.owner, repo: context.repo.repo,
@@ -303,6 +337,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          persist-credentials: false
+
       - uses: actions/create-github-app-token@v2
         id: app-token
         with:
@@ -317,6 +356,18 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
+            const fs = require('node:fs');
+            const policy = JSON.parse(fs.readFileSync('.agents/policy.json', 'utf8'));
+            const checkName = policy.review?.required_check_name;
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner: context.repo.owner, repo: context.repo.repo,
+              ref: process.env.HEAD_SHA, check_name: checkName, filter: 'latest', per_page: 20,
+            });
+            const check = checks.check_runs.find(candidate =>
+              candidate.name === checkName &&
+              candidate.app?.slug === policy.approval.expected_app_slug
+            );
+            if (!check) throw new Error('App-owned independent review check is missing.');
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: Number(process.env.PR_NUMBER),
@@ -324,6 +375,15 @@ jobs:
                 `CI or the dev-freshness gate failed for \`${process.env.HEAD_SHA}\`.`,
                 'Independent review was not run; update the branch and rerun CI.',
               ].join('\n'),
+            });
+            await github.rest.checks.update({
+              owner: context.repo.owner, repo: context.repo.repo,
+              check_run_id: check.id, status: 'completed', conclusion: 'failure',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Independent review blocked by CI or stale base',
+                summary: `CI or dev freshness failed for \`${process.env.HEAD_SHA}\`.`,
+              },
             });
             await github.rest.issues.removeLabel({
               owner: context.repo.owner, repo: context.repo.repo,
@@ -345,6 +405,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          persist-credentials: false
+
       - uses: actions/create-github-app-token@v2
         id: app-token
         with:
@@ -360,8 +425,20 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
+            const fs = require('node:fs');
+            const policy = JSON.parse(fs.readFileSync('.agents/policy.json', 'utf8'));
             const prNumber = Number(process.env.PR_NUMBER);
             const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const checkName = policy.review?.required_check_name;
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner: context.repo.owner, repo: context.repo.repo,
+              ref: process.env.HEAD_SHA, check_name: checkName, filter: 'latest', per_page: 20,
+            });
+            const check = checks.check_runs.find(candidate =>
+              candidate.name === checkName &&
+              candidate.app?.slug === policy.approval.expected_app_slug
+            );
+            if (!check) throw new Error('App-owned independent review check is missing.');
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: prNumber,
@@ -369,6 +446,15 @@ jobs:
                 `Independent review failed for \`${process.env.HEAD_SHA}\`.`,
                 'No findings were published. Do not merge until the review provider succeeds.',
               ].join('\n'),
+            });
+            await github.rest.checks.update({
+              owner: context.repo.owner, repo: context.repo.repo,
+              check_run_id: check.id, status: 'completed', conclusion: 'failure',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Independent review provider failed',
+                summary: `No findings were published for \`${process.env.HEAD_SHA}\`.`,
+              },
             });
             await github.rest.issues.removeLabel({
               owner: context.repo.owner, repo: context.repo.repo,
