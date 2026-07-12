@@ -40,6 +40,20 @@ try {
     ...facts.changed_files.map((path) => `- \`${path}\``),
     `- \`.agents/handoff/issue-${facts.issue_number}.md\` (controller-generated execution record)`,
   ].join("\n");
+  const verification = facts.verification;
+  if (!verification || typeof verification !== "object") {
+    throw new Error("Implementation facts are missing verification evidence.");
+  }
+  const verificationRows = [
+    verificationRow("npm test", verification.tests, verification.reason),
+    verificationRow("npm run lint", verification.lint, verification.reason),
+    verificationRow(
+      "npm run format:check",
+      verification.format,
+      verification.reason
+    ),
+    "| scope guard | passed | Protected paths, approved paths, file count, and line count |",
+  ];
   content = replaceSection(content, "Changed Files", changedFiles);
   content = replaceSection(
     content,
@@ -47,10 +61,7 @@ try {
     [
       "| Command | Result | Notes |",
       "|---|---|---|",
-      "| `npm test` | passed | Authoritative credential-free verification job |",
-      "| `npm run lint` | passed | Authoritative credential-free verification job |",
-      "| `npm run format:check` | passed | Authoritative credential-free verification job |",
-      "| scope guard | passed | Protected paths, approved paths, file count, and line count |",
+      ...verificationRows,
     ].join("\n")
   );
   content = replaceSection(
@@ -81,4 +92,14 @@ function replaceSection(content, sectionName, body) {
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function verificationRow(command, result, reason) {
+  if (result === 0) {
+    return `| \`${command}\` | passed | Authoritative credential-free verification job |`;
+  }
+  if (result === "skipped" && typeof reason === "string" && reason.trim()) {
+    return `| \`${command}\` | skipped | ${reason.trim()} |`;
+  }
+  throw new Error(`Invalid verification result for ${command}.`);
 }
