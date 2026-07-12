@@ -39,7 +39,7 @@ flowchart TB
         ApprovalCheck["AI Plan Approval Check<br/>Plan SHA · Digest · Approver · App Slug"]
         DraftPR["ai/&lt;issue&gt;-&lt;slug&gt;<br/>Draft PR → dev<br/>Execution Handoff"]
         ExistingCI["TREK Existing CI<br/>Tests · Lint & Prettier · Required Checks"]
-        ReviewCheck["AI Independent Review<br/>App-owned Required Check · Exact Head SHA"]
+        ReviewCheck["AI Independent Review<br/>App-owned Required Check · Exact Head SHA<br/>Agent: pending → review · 普通 PR: success / N/A"]
         Ready["ai:ready-for-human"]
         Changes["ai:changes-requested"]
         Merged["Human-merged PR → dev"]
